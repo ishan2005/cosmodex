@@ -63,6 +63,13 @@ class InMemoryRedis {
     return Math.max(0, Math.ceil((expiry - Date.now()) / 1000));
   }
 
+  async ping(): Promise<string> {
+    return 'PONG';
+  }
+
+  async quit(): Promise<void> {}
+  disconnect(): void {}
+
   private checkExpiries() {
     const now = Date.now();
     for (const [key, expiry] of this.expiries.entries()) {
@@ -140,6 +147,23 @@ class RedisWrapper {
 
   async ttl(key: string): Promise<number> {
     return this.client.ttl(key);
+  }
+
+  async ping(): Promise<string> {
+    if (this.isFallback) return 'PONG'; // InMemoryRedis is always alive
+    return this.client.ping();
+  }
+
+  async quit(): Promise<void> {
+    if (!this.isFallback && this.client.quit) {
+      await this.client.quit();
+    }
+  }
+
+  disconnect(): void {
+    if (!this.isFallback && this.client.disconnect) {
+      this.client.disconnect();
+    }
   }
 }
 

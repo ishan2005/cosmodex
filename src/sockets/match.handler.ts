@@ -119,6 +119,11 @@ export function registerMatchHandlers(io: Server, socket: Socket) {
         // Broadcast state update to everyone
         io.to(roomId).emit('room_state_update', roomState);
 
+        // If match is completed (Boss Battle win), broadcast match_ended
+        if (roomState.status === 'COMPLETED') {
+          io.to(roomId).emit('match_ended', { winnerId: userId });
+        }
+
         // If Phase 1 Sprint and this user is the FIRST finisher, start 15s timer for the opponent
         if (firstFinisher && roomState.currentStage <= 5) {
           const opponentId = roomState.playerIds.find((id) => id !== userId)!;
