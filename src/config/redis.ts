@@ -1,0 +1,147 @@
+import Redis from 'ioredis';
+import { logger } from './logger.js';
+
+class InMemoryRedis {
+  private store = new Map<string, string>();
+  private expiries = new Map<string, number>();
+
+  constructor() {
+    logger.warn('Using InMemoryRedis storage for active session caching.');
+  }
+
+  async get(key: string): Promise<string | null> {
+    this.checkExpiries();
+    return this.store.get(key) || null;
+  }
+
+  async set(key: string, value: string): Promise<string> {
+    this.store.set(key, value);
+    return 'OK';
+  }
+
+  async setex(key: string, seconds: number, value: string): Promise<string> {
+    this.store.set(key, value);
+    this.expiries.set(key, Date.now() + seconds * 1000);
+    return 'OK';
+  }
+
+  async del(key: string): Promise<number> {
+    const existed = this.store.has(key) ? 1 : 0;
+    this.store.delete(key);
+    this.expiries.delete(key);
+    return existed;
+  }
+
+  async keys(pattern: string): Promise<string[]> {
+    this.checkExpiries();
+    const allKeys = Array.from(this.store.keys());
+    if (pattern.endsWith('*')) {
+      const prefix = pattern.slice(0, -1);
+      return allKeys.filter(k => k.startsWith(prefix));
+    }
+    return allKeys;
+  }
+
+  async exists(key: string): Promise<number> {
+    this.checkExpiries();
+    return this.store.has(key) ? 1 : 0;
+  }
+
+  async expire(key: string, seconds: number): Promise<number> {
+    if (this.store.has(key)) {
+      this.expiries.set(key, Date.now() + seconds * 1000);
+      return 1;
+    }
+    return 0;
+  }
+
+  async ttl(key: string): Promise<number> {
+    this.checkExpiries();
+    if (!this.store.has(key)) return -2;
+    const expiry = this.expiries.get(key);
+    if (!expiry) return -1;
+    return Math.max(0, Math.ceil((expiry - Date.now()) / 1000));
+  }
+
+  private checkExpiries() {
+    const now = Date.now();
+    for (const [key, expiry] of this.expiries.entries()) {
+      if (now > expiry) {
+        this.store.delete(key);
+        this.expiries.delete(key);
+      }
+    }
+  }
+}
+
+class RedisWrapper {
+  private client: any;
+  private isFallback = false;
+
+  constructor() {
+    const url = process.env.REDIS_URL;
+    // For local prototype and test execution without redis daemon running
+    if (url && process.env.NODE_ENV !== 'test-mock') {
+      try {
+        const clientInstance = new Redis(url, {
+          maxRetriesPerRequest: 1,
+          connectTimeout: 1000,
+          retryStrategy: () => null, // stop retrying on failed connections immediately
+        });
+
+        // Capture failed connection events to avoid throwing uncaught errors
+        clientInstance.on('error', (err) => {
+          if (!this.isFallback) {
+            logger.warn(`Redis connection failed: ${err.message}. Seamlessly switching to InMemory storage.`);
+            this.client = new InMemoryRedis();
+            this.isFallback = true;
+          }
+        });
+
+        this.client = clientInstance;
+      } catch (error) {
+        logger.warn(`Failed to initialize ioredis connection. Falling back to InMemory storage.`);
+        this.client = new InMemoryRedis();
+        this.isFallback = true;
+      }
+    } else {
+      this.client = new InMemoryRedis();
+      this.isFallback = true;
+    }
+  }
+
+  async get(key: string): Promise<string | null> {
+    return this.client.get(key);
+  }
+
+  async set(key: string, value: string): Promise<string> {
+    return this.client.set(key, value);
+  }
+
+  async setex(key: string, seconds: number, value: string): Promise<string> {
+    return this.client.setex(key, seconds, value);
+  }
+
+  async del(key: string): Promise<number> {
+    return this.client.del(key);
+  }
+
+  async keys(pattern: string): Promise<string[]> {
+    return this.client.keys(pattern);
+  }
+
+  async exists(key: string): Promise<number> {
+    return this.client.exists(key);
+  }
+
+  async expire(key: string, seconds: number): Promise<number> {
+    return this.client.expire(key, seconds);
+  }
+
+  async ttl(key: string): Promise<number> {
+    return this.client.ttl(key);
+  }
+}
+
+export const redis = new RedisWrapper();
+export type RedisClient = RedisWrapper;

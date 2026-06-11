@@ -1,0 +1,81 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String        @id @default(uuid())
+  username     String        @unique
+  email        String        @unique
+  passwordHash String
+  eloRating    Int           @default(1000)
+  createdAt    DateTime      @default(now())
+  
+  // Relations
+  matchesAsWinner Match[]    @relation("WinnerRelation")
+  matchesAsPlayer1 Match[]   @relation("Player1Relation")
+  matchesAsPlayer2 Match[]   @relation("Player2Relation")
+  submissions      Submission[]
+}
+
+model Problem {
+  id           String        @id @default(uuid())
+  title        String
+  description  String
+  difficulty   String        // EASY, MEDIUM, HARD, BOSS
+  basePoints   Int
+  timeLimitSec Int           @default(2)
+  memoryLimitMb Int          @default(128)
+  
+  // Relations
+  testCases    TestCase[]
+  submissions  Submission[]
+}
+
+model TestCase {
+  id           String        @id @default(uuid())
+  problemId    String
+  input        String
+  expected     String
+  isPublic     Boolean       @default(false)
+  
+  // Relations
+  problem      Problem       @relation(fields: [problemId], references: [id], onDelete: Cascade)
+}
+
+model Match {
+  id           String        @id @default(uuid())
+  player1Id    String
+  player2Id    String
+  winnerId     String?
+  startedAt    DateTime      @default(now())
+  endedAt      DateTime?
+  status       String        // ACTIVE, COMPLETED, ABANDONED
+  player1Score Int           @default(0)
+  player2Score Int           @default(0)
+  
+  // Relations
+  player1      User          @relation("Player1Relation", fields: [player1Id], references: [id])
+  player2      User          @relation("Player2Relation", fields: [player2Id], references: [id])
+  winner       User?         @relation("WinnerRelation", fields: [winnerId], references: [id])
+}
+
+model Submission {
+  id           String        @id @default(uuid())
+  userId       String
+  problemId    String
+  code         String
+  language     String        // PYTHON, CPP, JAVA
+  status       String        // ACCEPTED, WRONG_ANSWER, TIME_LIMIT_EXCEEDED, RUNTIME_ERROR
+  passedCount  Int
+  totalCount   Int
+  createdAt    DateTime      @default(now())
+
+  // Relations
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem      Problem       @relation(fields: [problemId], references: [id], onDelete: Cascade)
+}

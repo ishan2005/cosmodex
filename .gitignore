@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Environment variables (NEVER commit secrets)
+.env
+.env.local
+.env.production
+.env.staging
+
+# TypeScript build output
+dist/
+build/
+
+# Prisma generated client (regenerated from schema)
+# (keep schema.prisma, ignore generated client)
+# Uncomment if you want to ignore the generated client:
+# node_modules/.prisma/
+
+# SQLite database files (local dev only)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Temporary code execution files
+temp_runs/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# PDF files (design docs — too large for git)
+*.pdf
