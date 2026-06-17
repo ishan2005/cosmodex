@@ -10,7 +10,12 @@ export interface PlayerState {
   currentDraft: string;
   submissionsCount: number;
   stageScores: Record<number, number>; // Maps stageIndex (1-5) to score
-  decisionTimeout: number | null; // Timestamp in ms
+  decisionTimeout: number | null;      // Timestamp in ms
+  currentStage: number;                // This player's personal stage (1–6); advances independently
+  // Per-player independent timer (Sprint stages 1-5 only; Boss Battle uses room-level timer)
+  stageStartTime: number;              // ms timestamp when this player began their current stage
+  stageDuration: number;              // total seconds allocated for this player's current stage
+  stageTimeRemaining: number;         // seconds left — recomputed each tick by the server
 }
 
 export interface RoomState {

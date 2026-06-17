@@ -2,80 +2,67 @@ import { redis } from '../config/redis.js';
 import { RoomState } from '../types/index.js';
 import { logger } from '../config/logger.js';
 
-const ROOM_PREFIX = 'room:';
+const ROOM_PREFIX  = 'room:';
 const DRAFT_PREFIX = 'draft:';
-const ROOM_TTL = 3600; // 1 hour TTL for active lobbies
+const ROOM_TTL     = 3600; // 1 hour
 
 export class RedisService {
+
   /**
-   * Save the full active room state to Redis with a 1-hour expiration.
+   * Persist the full room state to Redis with a 1-hour TTL.
+   * Errors propagate to the caller — not silently swallowed.
    */
   static async saveRoomState(roomId: string, state: RoomState): Promise<void> {
-    try {
-      const key = `${ROOM_PREFIX}${roomId}`;
-      const value = JSON.stringify(state);
-      await redis.setex(key, ROOM_TTL, value);
-    } catch (error) {
-      logger.error(`Failed to save room state in Redis for room ${roomId}: ${error}`);
-    }
+    await redis.setex(`${ROOM_PREFIX}${roomId}`, ROOM_TTL, JSON.stringify(state));
   }
 
   /**
-   * Retrieve room state from Redis. Returns null if expired or missing.
+   * Retrieve room state. Returns null when the key is missing or expired.
    */
   static async getRoomState(roomId: string): Promise<RoomState | null> {
-    try {
-      const key = `${ROOM_PREFIX}${roomId}`;
-      const value = await redis.get(key);
-      if (!value) return null;
-      return JSON.parse(value) as RoomState;
-    } catch (error) {
-      logger.error(`Failed to get room state from Redis for room ${roomId}: ${error}`);
-      return null;
-    }
+    const raw = await redis.get(`${ROOM_PREFIX}${roomId}`);
+    if (!raw) return null;
+    return JSON.parse(raw) as RoomState;
   }
 
   /**
-   * Delete room state when the match is archived or closed.
+   * Delete room state and all associated player drafts.
+   * Called when a match ends or is force-closed.
    */
   static async deleteRoomState(roomId: string): Promise<void> {
-    try {
-      const key = `${ROOM_PREFIX}${roomId}`;
-      await redis.del(key);
-      
-      // Clean up drafts for this room
-      const draftKeys = await redis.keys(`${DRAFT_PREFIX}${roomId}:*`);
-      for (const draftKey of draftKeys) {
-        await redis.del(draftKey);
+    await redis.del(`${ROOM_PREFIX}${roomId}`);
+
+    // Clean up all drafts for this room in a single pipeline
+    const draftKeys = await redis.keys(`${DRAFT_PREFIX}${roomId}:*`);
+    if (draftKeys.length > 0) {
+      for (const key of draftKeys) {
+        await redis.del(key);
       }
-    } catch (error) {
-      logger.error(`Failed to delete room state from Redis for room ${roomId}: ${error}`);
     }
+
+    logger.info(`[Redis] Room ${roomId} state and drafts deleted`);
   }
 
   /**
-   * Periodically save player code drafts to prevent data loss.
+   * Autosave a player's code draft (overwrites on each call).
    */
   static async saveDraft(roomId: string, userId: string, draft: string): Promise<void> {
-    try {
-      const key = `${DRAFT_PREFIX}${roomId}:${userId}`;
-      await redis.setex(key, ROOM_TTL, draft);
-    } catch (error) {
-      logger.error(`Failed to save code draft for user ${userId} in room ${roomId}: ${error}`);
-    }
+    await redis.setex(`${DRAFT_PREFIX}${roomId}:${userId}`, ROOM_TTL, draft);
   }
 
   /**
-   * Fetch saved draft for a user. Returns empty string if none exists.
+   * Retrieve a player's last saved draft. Returns '' when nothing is cached.
    */
   static async getDraft(roomId: string, userId: string): Promise<string> {
-    try {
-      const key = `${DRAFT_PREFIX}${roomId}:${userId}`;
-      const draft = await redis.get(key);
-      return draft || '';
-    } catch (error) {
-      logger.error(`Failed to get code draft for user ${userId} in room ${roomId}: ${error}`);
-      return '';
-    }
+    const draft = await redis.get(`${DRAFT_PREFIX}${roomId}:${userId}`);
+    return draft ?? '';
+  }
+
+  /**
+   * Check whether a room key exists in Redis.
+   */
+  static async roomExists(roomId: string): Promise<boolean> {
+    const count = await redis.exists(`${ROOM_PREFIX}${roomId}`);
+    return count === 1;
   }
 }

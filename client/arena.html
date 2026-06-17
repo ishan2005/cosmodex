@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>COSMODEX — Live Arena</title>
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',monospace,sans-serif;background:#0d1117;color:#c9d1d9;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── SCREENS ── */
+.screen{display:none;flex:1;flex-direction:column}
+.screen.active{display:flex}
+
+/* ── LOBBY SCREEN ── */
+#lobby{align-items:center;justify-content:center;gap:20px;padding:40px}
+.logo{font-size:32px;font-weight:800;color:#58a6ff;letter-spacing:2px;margin-bottom:6px}
+.sub{color:#484f58;font-size:14px;margin-bottom:30px}
+.player-cards{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+.player-card{background:#161b22;border:2px solid #30363d;border-radius:12px;padding:24px 30px;cursor:pointer;text-align:center;transition:all .2s;min-width:160px}
+.player-card:hover{border-color:#58a6ff;background:#1c2840;transform:translateY(-2px)}
+.player-card.selected{border-color:#3fb950;background:#0d2318}
+.player-card .avatar{font-size:36px;margin-bottom:8px}
+.player-card .name{font-weight:700;font-size:15px;color:#e6edf3}
+.player-card .elo{font-size:12px;color:#8b949e;margin-top:4px}
+.queue-btn{background:#1f6feb;color:#fff;border:none;padding:12px 36px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;min-width:200px}
+.queue-btn:hover{background:#388bfd;transform:translateY(-1px)}
+.queue-btn:disabled{background:#21262d;color:#484f58;cursor:not-allowed;transform:none}
+.queue-status{font-size:13px;color:#8b949e;min-height:22px;text-align:center}
+.queue-anim{display:inline-block;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── ARENA SCREEN ── */
+#arena{display:grid;grid-template-rows:auto 1fr auto;height:100vh}
+
+.arena-header{background:#161b22;border-bottom:1px solid #30363d;padding:10px 20px;display:flex;align-items:center;gap:16px}
+.stage-badge{background:#0d2b52;color:#58a6ff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700}
+.timer{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;color:#e6edf3;min-width:60px;text-align:center}
+.timer.low{color:#f85149;animation:pulse .5s infinite}
+.arena-header h2{font-size:14px;color:#c9d1d9;flex:1}
+
+.arena-body{display:grid;grid-template-columns:360px 1fr;overflow:hidden}
+
+/* LEFT: Problem + players */
+.left-col{border-right:1px solid #30363d;display:flex;flex-direction:column;overflow:hidden}
+.problem-pane{padding:16px;border-bottom:1px solid #30363d;overflow-y:auto;flex:1}
+.problem-title{font-size:14px;font-weight:700;color:#e6edf3;margin-bottom:6px}
+.problem-diff{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;margin-bottom:10px}
+.EASY{background:#0d2b52;color:#58a6ff}
+.MEDIUM{background:#2d220a;color:#d29922}
+.BOSS{background:#3d0a1e;color:#ff7b93}
+.problem-desc{font-size:12px;color:#8b949e;line-height:1.6;white-space:pre-wrap}
+.test-cases{margin-top:12px}
+.test-case{background:#0d1117;border:1px solid #30363d;border-radius:5px;padding:8px;margin-bottom:6px;font-size:11px}
+.test-case .label{color:#484f58;font-size:10px;text-transform:uppercase;margin-bottom:3px}
+.test-case code{color:#a5b4fc}
+
+.players-pane{padding:14px;display:flex;flex-direction:column;gap:8px;background:#0d1117;border-top:1px solid #30363d}
+.player-row{background:#161b22;border:1px solid #30363d;border-radius:6px;padding:10px 12px;display:flex;align-items:center;gap:10px}
+.player-row.me{border-color:#1f6feb}
+.player-row.opp{border-color:#30363d}
+.player-name{font-weight:700;font-size:13px;flex:1}
+.player-me-tag{font-size:10px;color:#58a6ff;margin-left:4px}
+.lives{display:flex;gap:2px}
+.heart{font-size:12px}
+.heart.dead{opacity:.2}
+.pts{font-size:12px;color:#d29922;font-weight:700;min-width:50px;text-align:right}
+.pstatus{font-size:10px;padding:2px 6px;border-radius:10px;font-weight:600}
+.pstatus.CODING{background:#0d2b52;color:#58a6ff}
+.pstatus.DONE{background:#0d3321;color:#3fb950}
+.pstatus.WAITING_DECISION{background:#2d220a;color:#d29922}
+.pstatus.STAYING{background:#3d1a0a;color:#f0883e}
+.pstatus.SKIPPED{background:#2d0a2d;color:#bc8cff}
+.pstatus.ELIMINATED{background:#3d0a0a;color:#f85149}
+
+/* RIGHT: Editor + output */
+.right-col{display:flex;flex-direction:column;overflow:hidden}
+.editor-header{padding:8px 14px;background:#161b22;border-bottom:1px solid #30363d;display:flex;align-items:center;gap:10px}
+.editor-header select{background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:4px 8px;border-radius:4px;font-size:12px;font-family:monospace}
+.editor-header span{font-size:12px;color:#484f58;margin-left:auto}
+#code-editor{flex:1;min-height:0;}
+
+.output-pane{border-top:1px solid #30363d;max-height:160px;overflow-y:auto;background:#0d1117}
+.output-header{padding:6px 14px;background:#161b22;border-bottom:1px solid #30363d;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#484f58;display:flex;align-items:center;gap:8px}
+.output-body{padding:10px 14px;font-size:12px;font-family:monospace;white-space:pre-wrap;color:#8b949e;min-height:40px}
+.output-body.accepted{color:#3fb950}
+.output-body.wrong{color:#f85149}
+
+/* ── FOOTER ── */
+.arena-footer{background:#161b22;border-top:1px solid #30363d;padding:10px 16px;display:flex;align-items:center;gap:10px}
+.btn{padding:8px 20px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:monospace;transition:all .15s}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-submit{background:#238636;color:#fff}
+.btn-submit:hover:not(:disabled){background:#2ea043}
+.btn-run{background:#0d4a6e;color:#58a6ff;border:1px solid #1f6feb}
+.btn-run:hover:not(:disabled){background:#1a5f8a}
+.btn-run.running{background:#0d2b52;color:#484f58}
+.btn-skip{background:#21262d;color:#f85149;border:1px solid #f85149}
+.btn-skip:hover:not(:disabled){background:#3d0a0a}
+.btn-stay{background:#21262d;color:#3fb950;border:1px solid #3fb950}
+.btn-stay:hover:not(:disabled){background:#0d3321}
+.btn-redeem{background:#7d4e17;color:#fff}
+.btn-redeem:hover:not(:disabled){background:#9e6a03}
+/* ── USER CHIP (arena navbar) ── */
+.user-chip{display:flex;align-items:center;gap:8px;margin-left:auto;background:#0d1117;border:1px solid #30363d;border-radius:20px;padding:4px 12px 4px 8px;cursor:default}
+.user-chip .uc-avatar{width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#1f6feb,#388bfd);display:flex;align-items:center;justify-content:center;font-size:12px}
+.user-chip .uc-name{font-size:12px;font-weight:700;color:#e6edf3}
+.user-chip .uc-elo{font-size:11px;color:#d29922;font-weight:600}
+.btn-logout{background:none;border:1px solid #30363d;color:#484f58;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:monospace;transition:all .15s;margin-left:4px}
+.btn-logout:hover{border-color:#f85149;color:#f85149}
+/* ── LOBBY CARD ── */
+.lobby-card{background:#161b22;border:1px solid #30363d;border-radius:16px;padding:32px 40px;text-align:center;min-width:320px;box-shadow:0 8px 32px rgba(0,0,0,.4)}
+.lobby-avatar{font-size:56px;margin-bottom:12px;animation:float-avatar 3s ease-in-out infinite}
+@keyframes float-avatar{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.lobby-username{font-size:22px;font-weight:800;color:#e6edf3;margin-bottom:4px}
+.lobby-elo{font-size:13px;color:#d29922;font-weight:600;margin-bottom:24px}
+.lobby-divider{height:1px;background:#30363d;margin:0 -40px 24px}
+/* ── STDIN PANEL ── */
+.stdin-panel{border-top:1px solid #1f6feb;background:#0a1628;padding:0;max-height:0;overflow:hidden;transition:max-height .25s ease,padding .25s ease}
+.stdin-panel.open{max-height:120px;padding:8px 14px}
+.stdin-label{font-size:10px;color:#58a6ff;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between}
+.stdin-label button{background:none;border:none;color:#484f58;cursor:pointer;font-size:12px;line-height:1}
+.stdin-label button:hover{color:#c9d1d9}
+textarea#stdin-input{width:100%;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:6px 10px;font-family:'Cascadia Code','Fira Code',monospace;font-size:12px;resize:none;border-radius:4px;outline:none;height:60px;line-height:1.5}
+textarea#stdin-input::placeholder{color:#484f58}
+.output-body.run-out{color:#58a6ff}
+.footer-info{margin-left:auto;font-size:12px;color:#484f58}
+
+/* ── RESULT SCREEN ── */
+#result{align-items:center;justify-content:center;gap:16px;text-align:center;padding:40px}
+.result-icon{font-size:64px}
+.result-title{font-size:28px;font-weight:800}
+.result-title.win{color:#3fb950}
+.result-title.lose{color:#f85149}
+.result-title.draw{color:#d29922}
+.result-detail{color:#8b949e;font-size:14px;max-width:400px;line-height:1.6}
+.result-stats{display:flex;gap:24px;margin-top:10px}
+.stat-box{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px 20px;text-align:center}
+.stat-box .val{font-size:24px;font-weight:800;color:#e6edf3}
+.stat-box .lbl{font-size:11px;color:#484f58;margin-top:4px}
+.btn-replay{background:#1f6feb;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;margin-top:10px}
+.btn-replay:hover{background:#388bfd}
+
+/* ── NOTIFICATION TOAST ── */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1f6feb;color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;font-weight:600;z-index:999;pointer-events:none;opacity:0;transition:opacity .3s}
+.toast.show{opacity:1}
+.toast.warn{background:#9e6a03}
+.toast.err{background:#da3633}
+.toast.ok{background:#238636}
+
+/* ── DECISION OVERLAY ── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:100}
+.overlay.show{display:flex}
+.overlay-box{background:#161b22;border:2px solid #d29922;border-radius:12px;padding:30px 40px;text-align:center;max-width:360px}
+.overlay-box h3{font-size:18px;font-weight:700;color:#d29922;margin-bottom:8px}
+.overlay-box p{color:#8b949e;font-size:13px;margin-bottom:20px}
+.overlay-timer{font-size:36px;font-weight:800;color:#d29922;margin-bottom:20px;font-variant-numeric:tabular-nums}
+.overlay-btns{display:flex;gap:12px;justify-content:center}
+</style>
+</head>
+<body>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- DECISION OVERLAY -->
+<div class="overlay" id="overlay">
+  <div class="overlay-box">
+    <h3>⚡ Opponent Finished!</h3>
+    <p>Your opponent solved this stage. What do you want to do?</p>
+    <div class="overlay-timer" id="overlay-timer">15</div>
+    <div class="overlay-btns">
+      <button class="btn btn-stay" onclick="decide('stay')">✋ STAY & Keep Coding</button>
+      <button class="btn btn-skip" onclick="decide('skip')">⏭ SKIP (−1 life)</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── SCREEN 1: LOBBY ── -->
+<div id="lobby" class="screen active">
+  <div class="logo">⚔ COSMODEX</div>
+  <div class="sub">Real-time 1v1 Coding Battles</div>
+  <div class="lobby-card">
+    <div class="lobby-avatar" id="lobby-avatar">🧑‍💻</div>
+    <div class="lobby-username" id="lobby-username">Loading…</div>
+    <div class="lobby-elo" id="lobby-elo">ELO ———</div>
+    <div class="lobby-divider"></div>
+    <button class="queue-btn" id="queue-btn" onclick="queueUp()">🔍 Find Match</button>
+    <div class="queue-status" id="queue-status"></div>
+  </div>
+  <button class="btn-logout" onclick="logout()" style="margin-top:16px">🚪 Logout</button>
+</div>
+
+<!-- ── SCREEN 2: ARENA ── -->
+<div id="arena" class="screen">
+  <div class="arena-header">
+    <span class="stage-badge" id="stage-label">Stage 1/6</span>
+    <h2 id="problem-title-header">Loading…</h2>
+    <div class="timer" id="timer">3:00</div>
+    <!-- User chip -->
+    <div class="user-chip" id="arena-user-chip">
+      <div class="uc-avatar" id="uc-avatar">👤</div>
+      <span class="uc-name" id="uc-name">-</span>
+      <span class="uc-elo" id="uc-elo">ELO -</span>
+    </div>
+    <button class="btn-logout" onclick="logout()">🚪</button>
+  </div>
+
+  <div class="arena-body">
+    <!-- LEFT -->
+    <div class="left-col">
+      <div class="problem-pane" id="problem-pane">
+        <div style="color:#484f58;font-size:12px">Loading problem…</div>
+      </div>
+      <div class="players-pane" id="players-pane">
+        <div style="font-size:11px;color:#484f58;margin-bottom:4px">PLAYERS</div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="right-col">
+      <div class="editor-header">
+        <span style="font-size:12px;color:#8b949e">Code Editor</span>
+        <select id="lang-select">
+          <option value="python">Python 3</option>
+          <option value="javascript">JavaScript</option>
+          <option value="cpp">C++</option>
+        </select>
+        <span id="char-count">0 chars</span>
+      </div>
+      <div id="code-editor"></div>
+      <!-- STDIN PANEL (shown when ▶ Run is clicked) -->
+      <div class="stdin-panel" id="stdin-panel">
+        <div class="stdin-label">
+          <span>📥 Custom Input (stdin)</span>
+          <button onclick="closeStdin()" title="Close">✕</button>
+        </div>
+        <textarea id="stdin-input" placeholder="Enter your test input here…
+Example: 3 5"></textarea>
+      </div>
+      <div class="output-pane">
+        <div class="output-header">
+          <span id="output-label">Output</span>
+          <span id="result-badge" style="font-size:11px;color:#8b949e"></span>
+        </div>
+        <div class="output-body" id="output-body">Submit your code to see results.
+Tip: Use ▶ Run to test with custom input first.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arena-footer">
+    <button class="btn btn-run" id="btn-run" onclick="runCode()">▶ Run</button>
+    <button class="btn btn-submit" id="btn-submit" onclick="submitCode()">⚡ Submit Code</button>
+    <button class="btn btn-skip" id="btn-skip" style="display:none" onclick="decide('skip')">⏭ Skip (−1 life)</button>
+    <button class="btn btn-stay" id="btn-stay" style="display:none" onclick="decide('stay')">✋ Stay</button>
+    <button class="btn btn-redeem" id="btn-redeem" style="display:none" onclick="redeemLife()">❤️ Redeem Life (100pts)</button>
+    <div class="footer-info" id="footer-info">Room loading…</div>
+  </div>
+</div>
+
+<!-- ── SCREEN 3: RESULT ── -->
+<div id="result" class="screen">
+  <div class="result-icon" id="res-icon">🏆</div>
+  <div class="result-title" id="res-title">Result</div>
+  <div class="result-detail" id="res-detail"></div>
+  <div class="result-stats" id="res-stats"></div>
+  <button class="btn-replay" onclick="location.reload()">Play Again</button>
+</div>
+
+<script>
+// ── GLOBALS ──────────────────────────────────────────────────────
+// ── MONACO EDITOR ───────────────────────────────────────────────
+let editor = null;
+
+require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+require(['vs/editor/editor.main'], function () {
+  monaco.editor.defineTheme('cosmodex-dark', {
+    base: 'vs-dark', inherit: true,
+    rules: [
+      { token: 'comment',  foreground: '6e7681', fontStyle: 'italic' },
+      { token: 'keyword',  foreground: 'ff7b93', fontStyle: 'bold'   },
+      { token: 'string',   foreground: 'a5d6ff' },
+      { token: 'number',   foreground: '79c0ff' },
+      { token: 'type',     foreground: 'ffa657' },
+      { token: 'function', foreground: 'd2a8ff' },
+    ],
+    colors: {
+      'editor.background':              '#0d1117',
+      'editor.foreground':              '#c9d1d9',
+      'editor.lineHighlightBackground': '#161b22',
+      'editorLineNumber.foreground':    '#484f58',
+      'editorLineNumber.activeForeground': '#c9d1d9',
+      'editor.selectionBackground':     '#1f6feb44',
+      'editorCursor.foreground':        '#58a6ff',
+      'editorIndentGuide.background1':  '#21262d',
+      'editorBracketMatch.background':  '#1f6feb33',
+      'editorBracketMatch.border':      '#58a6ff',
+      'scrollbarSlider.background':     '#30363d88',
+      'scrollbarSlider.hoverBackground':'#484f58aa',
+    }
+  });
+
+  editor = monaco.editor.create(document.getElementById('code-editor'), {
+    value: '# Write your solution here\n',
+    language: 'python',
+    theme: 'cosmodex-dark',
+    minimap: { enabled: false },
+    fontSize: 13,
+    fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
+    fontLigatures: true,
+    lineNumbers: 'on',
+    automaticLayout: true,
+    scrollBeyondLastLine: false,
+    wordWrap: 'off',
+    tabSize: 4,
+    insertSpaces: true,
+    renderLineHighlight: 'line',
+    cursorBlinking: 'smooth',
+    smoothScrolling: true,
+    padding: { top: 12, bottom: 12 },
+    overviewRulerLanes: 0,
+    scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
+  });
+
+  editor.onDidChangeModelContent(() => {
+    document.getElementById('char-count').textContent = editor.getValue().length + ' chars';
+  });
+});
+
+// Language selector: switch Monaco language mode + update starter code
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('lang-select').addEventListener('change', function () {
+    const lang = this.value;
+    const monacoLangs = { python: 'python', javascript: 'javascript', cpp: 'cpp' };
+    if (editor) {
+      monaco.editor.setModelLanguage(editor.getModel(), monacoLangs[lang] || 'plaintext');
+      if (currentProblem) {
+        const starters = getLanguageStarters(currentProblem.title);
+        editor.setValue(starters[lang] || '');
+        editor.setPosition({ lineNumber: 1, column: 1 });
+      }
+    }
+  });
+});
+
+// Helper: returns starter code map for all languages given problem title
+function getLanguageStarters(title) {
+  return {
+    python:     getStarterCode(title),
+    javascript: `// ${title}\nconst lines = require('fs').readFileSync(0,'utf8').trim().split('\\n');\n\n`,
+    cpp:        `#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n    \n    return 0;\n}`,
+  };
+}
+
+// ── AUTH GUARD ─────────────────────────────────────────────────────
+const _storedToken = localStorage.getItem('cosmodex_token') || '';
+const _storedUser  = JSON.parse(localStorage.getItem('cosmodex_user') || 'null');
+if (!_storedToken || !_storedUser) { window.location.replace('/login.html'); }
+
+let myUserId   = _storedUser?.id       || '';
+let myUsername = _storedUser?.username  || '';
+let myElo      = _storedUser?.eloRating || 1000;
+let myToken    = _storedToken;
+let socket = null;
+let currentRoomId = '';
+let currentProblem = null;
+let allProblems = [];
+let decisionInterval = null;
+let isRunning = false;
+let stateCache = null;
+let isSubmitting = false;
+
+// Populate lobby card + arena chip from stored user
+const _avatars = ['\ud83e\uddd1\u200d\ud83d\udcbb','\ud83e\udd77','\ud83e\uddd9','\ud83e\udd84','\ud83d\udc68\u200d\ud83d\ude80','\ud83e\udd16','\ud83d\udc7e','\ud83d\udc38'];
+const _av = _avatars[myUsername.charCodeAt(0) % _avatars.length];
+document.getElementById('lobby-avatar').textContent  = _av;
+document.getElementById('lobby-username').textContent = myUsername;
+document.getElementById('lobby-elo').textContent      = `ELO ${myElo}`;
+document.getElementById('uc-avatar').textContent = _av;
+document.getElementById('uc-name').textContent   = myUsername;
+document.getElementById('uc-elo').textContent    = `ELO ${myElo}`;
+
+function logout() {
+  localStorage.removeItem('cosmodex_token');
+  localStorage.removeItem('cosmodex_user');
+  if (socket) socket.disconnect();
+  window.location.replace('/login.html');
+}
+
+// ── HELPERS ──────────────────────────────────────────────────────
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + type;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = 'toast', 3000);
+}
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function fmtTime(secs) {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function heartsHtml(lives, max = 5) {
+  return Array.from({ length: max }, (_, i) =>
+    `<span class="heart ${i < lives ? '' : 'dead'}">❤</span>`
+  ).join('');
+}
+
+// ── LOBBY ────────────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  // Refresh ELO from server
+  try {
+    const me = await fetch(`/api/users/${myUserId}`, {
+      headers: { Authorization: `Bearer ${myToken}` },
+    }).then(r => r.json());
+    if (me?.eloRating !== undefined) {
+      myElo = me.eloRating;
+      document.getElementById('lobby-elo').textContent = `ELO ${myElo}`;
+      document.getElementById('uc-elo').textContent = `ELO ${myElo}`;
+      localStorage.setItem('cosmodex_user', JSON.stringify({ ...(_storedUser), eloRating: myElo }));
+    }
+  } catch {}
+  const probs = await fetch('/api/problems').then(r => r.json()).catch(() => []);
+  allProblems = Array.isArray(probs) ? probs : [];
+});
+
+async function queueUp() {
+  const btn    = document.getElementById('queue-btn');
+  const status = document.getElementById('queue-status');
+
+  btn.disabled = true;
+  btn.textContent = '\ud83d\udd0d Searching…';
+  status.innerHTML = `<span class="queue-anim">●</span> In queue — waiting for opponent`;
+
+  // Use token already stored in localStorage — no login call needed
+  socket = io({ auth: { token: myToken } });
+
+  socket.on('connect', () => {
+    // CRITICAL FIX: Only join queue if not already in a match.
+    // On reconnect while in arena, rejoin the existing room instead.
+    if (currentRoomId) {
+      console.log('Reconnected — rejoining room', currentRoomId);
+      socket.emit('join_room', { roomId: currentRoomId, userId: myUserId });
+    } else {
+      socket.emit('join_queue', { userId: myUserId });
+    }
+  });
+
+  socket.on('queue_joined', (d) => {
+    status.innerHTML = `<span class="queue-anim">●</span> In queue — ${d.size} player(s) waiting…`;
+  });
+
+  socket.on('queue_pulse', (d) => {
+    if (d.size > 0) status.innerHTML = `<span class="queue-anim">●</span> ${d.size} player(s) in queue…`;
+  });
+
+  socket.on('match_found', async (d) => {
+    // CRITICAL FIX: Ignore duplicate match_found if already in a match
+    if (currentRoomId) {
+      console.warn('Received duplicate match_found — ignoring (already in room', currentRoomId, ')');
+      return;
+    }
+    currentRoomId = d.roomId;
+    toast(`Match found vs ${d.opponentUsername} (ELO ${d.opponentElo})!`, 'ok');
+    clearInterval(decisionInterval);
+
+    registerGameListeners();
+    socket.emit('join_room', { roomId: currentRoomId, userId: myUserId });
+
+    // Load problems
+    if (allProblems.length === 0) {
+      allProblems = await fetch('/api/problems').then(r => r.json()).catch(() => []);
+    }
+
+    showScreen('arena');
+    document.getElementById('footer-info').textContent = `Room: ${currentRoomId.slice(0, 18)}…`;
+  });
+
+  socket.on('error', (e) => {
+    toast(e.message, 'err');
+    btn.disabled = false;
+    btn.textContent = `Queue Up as ${p.username}`;
+    status.textContent = '';
+  });
+
+  socket.on('disconnect', () => {
+    // Reset submit state so button unlocks on reconnect
+    if (isSubmitting) {
+      isSubmitting = false;
+      const submitBtn = document.getElementById('btn-submit');
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '⚡ Submit Code'; }
+      const outputBody = document.getElementById('output-body');
+      if (outputBody) outputBody.textContent = 'Connection lost — please resubmit.';
+    }
+    if (document.getElementById('lobby').classList.contains('active')) {
+      btn.disabled = false;
+      btn.textContent = `Queue Up as ${p.username}`;
+      status.textContent = 'Disconnected.';
+    }
+  });
+}
+
+// ── GAME LISTENERS ────────────────────────────────────────────────
+function registerGameListeners() {
+  // FIX: Remove any existing listeners first to prevent stacking duplicates
+  // on repeated match_found events (e.g. after socket reconnect)
+  socket.off('room_state_update');
+  socket.off('submission_result');
+  socket.off('opponent_completed_stage');
+  socket.off('match_ended');
+  socket.off('waiting_for_opponent');
+
+  socket.off('run_result');
+
+  socket.on('room_state_update', (state) => {
+    stateCache = state;
+    renderState(state);
+  });
+
+  socket.on('submission_result', (r) => {
+    isSubmitting = false;
+    document.getElementById('btn-submit').disabled = false;
+    document.getElementById('btn-submit').textContent = '⚡ Submit Code';
+    document.getElementById('output-label').textContent = 'Output';
+
+    const body = document.getElementById('output-body');
+    const badge = document.getElementById('result-badge');
+
+    if (r.status === 'ACCEPTED') {
+      body.className = 'output-body accepted';
+      badge.textContent = `✅ ACCEPTED`;
+      badge.style.color = '#3fb950';
+      let out = `✅ ACCEPTED — ${r.passedCount}/${r.totalCount} test cases passed (+${r.pointsAwarded} pts)\n`;
+      r.testCases?.forEach((tc, i) => {
+        if (tc.isPublic) out += `\nTest ${i+1}: ${tc.passed ? '✓' : '✗'}  Input: ${tc.input}  Expected: ${tc.expected}  Got: ${tc.actual}`;
+      });
+      body.textContent = out;
+      toast('ACCEPTED! 🎉', 'ok');
+    } else {
+      body.className = 'output-body wrong';
+      const statusLabel = r.status.replace(/_/g,' ');
+      badge.textContent = statusLabel;
+      badge.style.color = '#f85149';
+      let out = r.error
+        ? `⚠️ ${statusLabel}\n${r.error}`
+        : `❌ ${statusLabel} — ${r.passedCount}/${r.totalCount} test cases passed  (lives: ${r.livesRemaining})`;
+      r.testCases?.forEach((tc, i) => {
+        if (tc.isPublic) out += `\nTest ${i+1}: ${tc.passed ? '✓' : '✗'}  Input: ${tc.input}  Expected: ${tc.expected}  Got: ${tc.actual}`;
+      });
+      body.textContent = out;
+      if (r.livesRemaining === 0) toast('You have been eliminated!', 'err');
+      else toast(`${statusLabel} — ${r.livesRemaining} lives left`, 'err');
+    }
+  });
+
+  socket.on('run_result', (r) => {
+    isRunning = false;
+    const runBtn = document.getElementById('btn-run');
+    runBtn.disabled = false;
+    runBtn.textContent = '▶ Run';
+    runBtn.classList.remove('running');
+    document.getElementById('output-label').textContent = 'Run Output';
+
+    const body = document.getElementById('output-body');
+    const badge = document.getElementById('result-badge');
+
+    if (r.timedOut) {
+      body.className = 'output-body wrong';
+      badge.textContent = '⏱ TIME LIMIT';
+      badge.style.color = '#d29922';
+      body.textContent = '⏱ Time Limit Exceeded (>5s)\nYour code took too long to run.';
+      toast('Time Limit Exceeded', 'warn');
+    } else if (r.stderr && !r.stdout) {
+      body.className = 'output-body wrong';
+      badge.textContent = '🔴 STDERR';
+      badge.style.color = '#f85149';
+      body.textContent = r.stderr;
+      toast('Runtime error — check output', 'err');
+    } else {
+      body.className = 'output-body run-out';
+      badge.textContent = '▶ RUN';
+      badge.style.color = '#58a6ff';
+      let out = r.stdout || '(no output)';
+      if (r.stderr) out += `\n\n--- stderr ---\n${r.stderr}`;
+      body.textContent = out;
+    }
+  });
+
+  socket.on('opponent_completed_stage', (d) => {
+    startDecisionCountdown(d.decisionTimeRemaining || 15);
+  });
+
+  socket.on('match_ended', (d) => {
+    clearDecisionUI();
+    showResult(d);
+  });
+
+  socket.on('waiting_for_opponent', (d) => {
+    toast(d.message || 'Waiting for opponent decision…', 'warn');
+  });
+}
+
+
+// ── RENDER STATE ──────────────────────────────────────────────────
+function renderState(state) {
+  const me = state.players[myUserId];
+
+  // Use MY personal stage (not room stage) for problem + badge.
+  // When I choose STAY, my currentStage stays at 1 while the room advances to 2.
+  const myStage = me?.currentStage ?? state.currentStage;
+  const isBoss  = myStage === 6;
+
+  // Header: stage badge uses MY stage; timer is shared (room-level)
+  document.getElementById('stage-label').textContent = isBoss ? '⚔ BOSS BATTLE' : `Stage ${myStage}/6`;
+  const timerEl = document.getElementById('timer');
+  timerEl.textContent = fmtTime(state.stageTimeRemaining);
+  timerEl.className = 'timer' + (state.stageTimeRemaining <= 30 ? ' low' : '');
+
+  // Problem: look up by MY stage index
+  const problemId = state.problems[myStage - 1];
+  const problem = allProblems.find(p => p.id === problemId);
+  if (problem && problem.id !== currentProblem?.id) {
+    currentProblem = problem;
+    renderProblem(problem);
+  }
+
+  // Players
+  renderPlayers(state);
+
+  // Footer buttons
+  const inDecision = me?.status === 'WAITING_DECISION';
+  document.getElementById('btn-submit').style.display = inDecision ? 'none' : '';
+  document.getElementById('btn-skip').style.display = inDecision ? '' : 'none';
+  document.getElementById('btn-stay').style.display = inDecision ? '' : 'none';
+  document.getElementById('btn-redeem').style.display = isBoss && (me?.lives === 0 || me?.points >= 100) ? '' : 'none';
+  document.getElementById('btn-submit').disabled = isSubmitting || me?.status === 'DONE' || me?.status === 'ELIMINATED';
+}
+
+
+function renderProblem(p) {
+  document.getElementById('problem-title-header').textContent = p.title;
+  const pane = document.getElementById('problem-pane');
+
+  let tcHtml = '';
+  (p.testCases || []).forEach((tc, i) => {
+    tcHtml += `<div class="test-case">
+      <div class="label">Example ${i+1}</div>
+      <div>Input: <code>${tc.input}</code></div>
+      <div>Output: <code>${tc.expected}</code></div>
+    </div>`;
+  });
+
+  pane.innerHTML = `
+    <div class="problem-title">${p.title}</div>
+    <span class="problem-diff ${p.difficulty}">${p.difficulty}</span>
+    <div class="problem-desc">${p.description}</div>
+    <div class="test-cases">${tcHtml}</div>
+  `;
+
+  // Set starter code
+  const starters = {
+    python: getStarterCode(p.title),
+    javascript: `// Write your solution\nconst lines = require('fs').readFileSync('/dev/stdin','utf8').trim().split('\\n');\n\n`,
+    java: `import java.util.Scanner;\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    \n  }\n}`,
+    cpp: `#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  \n  return 0;\n}`,
+  };
+  const lang = document.getElementById('lang-select').value;
+  if (editor) {
+    editor.setValue(starters[lang] || '');
+    editor.setPosition({ lineNumber: 1, column: 1 });
+    editor.revealLine(1);
+    const monacoLangs = { python: 'python', javascript: 'javascript', cpp: 'cpp' };
+    monaco.editor.setModelLanguage(editor.getModel(), monacoLangs[lang] || 'plaintext');
+  }
+}
+
+function getStarterCode(title) {
+  const map = {
+    'Sum of Two Numbers':         'a, b = map(int, input().split())\nprint(a + b)',
+    'Reverse a String':           's = input()\nprint(s[::-1])',
+    'FizzBuzz List':              'n = int(input())\nresult = []\nfor i in range(1, n+1):\n    if i % 15 == 0: result.append("FizzBuzz")\n    elif i % 3 == 0: result.append("Fizz")\n    elif i % 5 == 0: result.append("Buzz")\n    else: result.append(str(i))\nprint(" ".join(result))',
+    'Is Prime Number':            'n = int(input())\nif n < 2:\n    print("COMPOSITE")\nelse:\n    prime = all(n % i != 0 for i in range(2, int(n**0.5)+1))\n    print("PRIME" if prime else "COMPOSITE")',
+    'Find Maximum Integer':       'nums = list(map(int, input().split()))\nprint(max(nums))',
+    'Longest Palindromic Substring': '# Your solution here\ns = input()\n',
+  };
+  return map[title] || '# Write your solution here\n';
+}
+
+function renderPlayers(state) {
+  const pane = document.getElementById('players-pane');
+  let html = '<div style="font-size:11px;color:#484f58;margin-bottom:6px;font-weight:700">PLAYERS</div>';
+
+  state.playerIds.forEach(uid => {
+    const p = state.players[uid];
+    const isMe = uid === myUserId;
+    const livesHtml = heartsHtml(Math.max(0, p.lives));
+    html += `
+      <div class="player-row ${isMe ? 'me' : 'opp'}">
+        <span class="player-name">${p.username}${isMe ? '<span class="player-me-tag">(you)</span>' : ''}</span>
+        <div class="lives">${livesHtml}</div>
+        <span class="pts">${p.points}pts</span>
+        <span class="pstatus ${p.status}">${p.status.replace('_',' ')}</span>
+      </div>`;
+  });
+
+  pane.innerHTML = html;
+}
+
+// ── SUBMIT ────────────────────────────────────────────────────────
+function submitCode() {
+  if (!currentProblem || isSubmitting) return;
+  const code = editor ? editor.getValue().trim() : '';
+  if (!code) { toast('Write some code first!', 'warn'); return; }
+
+  isSubmitting = true;
+  document.getElementById('btn-submit').disabled = true;
+  document.getElementById('btn-submit').textContent = '⏳ Judging…';
+  document.getElementById('output-body').className = 'output-body';
+  document.getElementById('output-body').textContent = 'Running against test cases…';
+  document.getElementById('result-badge').textContent = '';
+
+  socket.emit('submit_code', {
+    roomId: currentRoomId,
+    userId: myUserId,
+    problemId: currentProblem.id,
+    code,
+    language: document.getElementById('lang-select').value,
+  });
+}
+
+// ── RUN (custom input — no match state change) ────────────────────
+function runCode() {
+  const code = editor ? editor.getValue().trim() : '';
+  if (!code) { toast('Write some code first!', 'warn'); return; }
+  if (isRunning) return;
+
+  // Open stdin panel if not already open
+  const panel = document.getElementById('stdin-panel');
+  if (!panel.classList.contains('open')) {
+    panel.classList.add('open');
+    document.getElementById('stdin-input').focus();
+    toast('Enter your custom input, then click ▶ Run again', 'warn');
+    return;
+  }
+
+  const stdin = document.getElementById('stdin-input').value;
+  isRunning = true;
+  const runBtn = document.getElementById('btn-run');
+  runBtn.disabled = true;
+  runBtn.textContent = '⏳ Running…';
+  runBtn.classList.add('running');
+  document.getElementById('output-label').textContent = 'Run Output';
+  document.getElementById('output-body').className = 'output-body';
+  document.getElementById('output-body').textContent = 'Running your code…';
+  document.getElementById('result-badge').textContent = '';
+  document.getElementById('result-badge').style.color = '';
+
+  socket.emit('run_code', {
+    code,
+    language: document.getElementById('lang-select').value,
+    stdin,
+  });
+}
+
+function closeStdin() {
+  document.getElementById('stdin-panel').classList.remove('open');
+}
+
+// ── DECISION ─────────────────────────────────────────────────────
+function startDecisionCountdown(secs) {
+  const overlay = document.getElementById('overlay');
+  const timerEl = document.getElementById('overlay-timer');
+  overlay.classList.add('show');
+  let remaining = secs;
+  timerEl.textContent = remaining;
+  clearInterval(decisionInterval);
+  decisionInterval = setInterval(() => {
+    remaining--;
+    timerEl.textContent = remaining;
+    if (remaining <= 0) clearDecisionUI();
+  }, 1000);
+  toast('Your opponent finished! Decide: STAY or SKIP', 'warn');
+}
+
+function clearDecisionUI() {
+  clearInterval(decisionInterval);
+  document.getElementById('overlay').classList.remove('show');
+}
+
+function decide(choice) {
+  clearDecisionUI();
+  socket.emit('decide_skip_stay', { roomId: currentRoomId, userId: myUserId, choice });
+  toast(choice === 'skip' ? 'Skipped stage (−1 life)' : 'Staying to solve!', choice === 'skip' ? 'warn' : 'ok');
+  document.getElementById('btn-skip').style.display = 'none';
+  document.getElementById('btn-stay').style.display = 'none';
+}
+
+function redeemLife() {
+  socket.emit('redeem_life', { roomId: currentRoomId, userId: myUserId });
+  toast('Redeeming life for 100pts…', 'ok');
+}
+
+// ── MATCH ENDED ───────────────────────────────────────────────────
+function showResult(d) {
+  showScreen('result');
+  const me = stateCache?.players[myUserId];
+  const opponentId = stateCache?.playerIds.find(id => id !== myUserId);
+  const opp = stateCache?.players[opponentId];
+
+  let icon, title, titleClass, detail;
+
+  if (!d.winnerId) {
+    icon = '🤝'; title = 'DRAW'; titleClass = 'draw';
+    detail = 'Both players fought valiantly. No winner this time.';
+  } else if (d.winnerId === myUserId) {
+    icon = '🏆'; title = 'VICTORY'; titleClass = 'win';
+    detail = `You defeated ${opp?.username || 'your opponent'}! ELO updated.`;
+  } else {
+    icon = '💀'; title = 'DEFEATED'; titleClass = 'lose';
+    detail = `${opp?.username || 'Your opponent'} won this round. Better luck next time!`;
+  }
+
+  document.getElementById('res-icon').textContent = icon;
+  document.getElementById('res-title').textContent = title;
+  document.getElementById('res-title').className = 'result-title ' + titleClass;
+  document.getElementById('res-detail').textContent = detail;
+
+  document.getElementById('res-stats').innerHTML = `
+    <div class="stat-box"><div class="val">${me?.points ?? 0}</div><div class="lbl">Points Earned</div></div>
+    <div class="stat-box"><div class="val">${me?.lives ?? 0}</div><div class="lbl">Lives Left</div></div>
+    <div class="stat-box"><div class="val">${me?.submissionsCount ?? 0}</div><div class="lbl">Submissions</div></div>
+  `;
+}
+
+// ── LANG SWITCH ───────────────────────────────────────────────────
+document.getElementById('lang-select').addEventListener('change', () => {
+  if (currentProblem) renderProblem(currentProblem);
+});
+</script>
+</body>
+</html>

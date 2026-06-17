@@ -1,28 +1,188 @@
-version: '3.8'
+################################################################################
+# COSMODEX — docker-compose.yml
+#
+# Services overview:
+#   cosmodex        — Node.js backend (Express + Socket.IO)
+#   cosmodex-db     — PostgreSQL for user accounts, matches, submissions
+#   cosmodex-redis  — Redis for room state / matchmaking queue
+#   judge0-server   — Judge0 CE API server (sandboxed code execution)
+#   judge0-worker-1 — Judge0 execution worker 1
+#   judge0-worker-2 — Judge0 execution worker 2
+#   judge0-db       — PostgreSQL for Judge0 internal storage
+#   judge0-redis    — Redis for Judge0 job queue
+#
+# Usage:
+#   docker compose up -d                        # Start all services
+#   docker compose logs -f cosmodex             # Stream app logs
+#   docker compose down -v                      # Stop and remove volumes
+################################################################################
 
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: cosmodex_postgres
-    restart: always
-    environment:
-      POSTGRES_USER: cosmodex_user
-      POSTGRES_PASSWORD: cosmodex_password
-      POSTGRES_DB: cosmodex_db
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
 
-  redis:
+  # ── 1. COSMODEX BACKEND ───────────────────────────────────────
+  cosmodex:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cosmodex
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://cosmodex:cosmodex@cosmodex-db:5432/cosmodex
+      REDIS_URL: redis://cosmodex-redis:6379
+      # JUDGE0_URL disabled — using LocalMultiExecutor (python3/g++/node inside container)
+      # Uncomment below only when Judge0 cgroup v1 is available (Linux host)
+      # JUDGE0_URL: http://judge0-server:2358
+      JWT_SECRET: ${JWT_SECRET:-cosmodex-super-secret-change-in-prod}
+      JWT_EXPIRES_IN: 7d
+      ALLOWED_ORIGIN: "*"
+    depends_on:
+      cosmodex-db:
+        condition: service_healthy
+      cosmodex-redis:
+        condition: service_healthy
+      judge0-server:
+        condition: service_started
+    networks:
+      - cosmodex-net
+      - judge0-net
+
+  # ── 2. COSMODEX POSTGRESQL ────────────────────────────────────
+  cosmodex-db:
+    image: postgres:16-alpine
+    container_name: cosmodex-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cosmodex
+      POSTGRES_PASSWORD: cosmodex
+      POSTGRES_DB: cosmodex
+    volumes:
+      - cosmodex-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cosmodex -d cosmodex"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - cosmodex-net
+
+  # ── 3. COSMODEX REDIS ─────────────────────────────────────────
+  cosmodex-redis:
     image: redis:7-alpine
-    container_name: cosmodex_redis
-    restart: always
+    container_name: cosmodex-redis
+    restart: unless-stopped
+    # Disable persistence for ephemeral session/queue data
+    command: redis-server --save "" --appendonly no
+    ports:
+      - "6380:6379"   # Map to 6380 on host so it doesn't conflict with judge0-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - cosmodex-net
+
+  # ── 4. JUDGE0 CE SERVER ───────────────────────────────────────
+  judge0-server:
+    image: judge0/judge0:1.13.1
+    container_name: judge0-server
+    restart: unless-stopped
+    ports:
+      - "2358:2358"
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    # Judge0 requires privileged mode for process isolation / cgroups
+    privileged: true
+    depends_on:
+      judge0-db:
+        condition: service_healthy
+      judge0-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:2358/languages || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    networks:
+      - judge0-net
+      - cosmodex-net
+
+  # ── 5. JUDGE0 WORKERS (2x for parallel execution) ─────────────
+  judge0-worker-1:
+    image: judge0/judge0:1.13.1
+    container_name: judge0-worker-1
+    restart: unless-stopped
+    command: ["./scripts/workers"]
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    privileged: true
+    depends_on:
+      - judge0-server
+    networks:
+      - judge0-net
+
+  judge0-worker-2:
+    image: judge0/judge0:1.13.1
+    container_name: judge0-worker-2
+    restart: unless-stopped
+    command: ["./scripts/workers"]
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    privileged: true
+    depends_on:
+      - judge0-server
+    networks:
+      - judge0-net
+
+  # ── 6. JUDGE0 POSTGRESQL ──────────────────────────────────────
+  judge0-db:
+    image: postgres:14-alpine
+    container_name: judge0-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: judge0password
+      POSTGRES_DB: judge0
+    volumes:
+      - judge0-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d judge0"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - judge0-net
+
+  # ── 7. JUDGE0 REDIS ───────────────────────────────────────────
+  judge0-redis:
+    image: redis:7-alpine
+    container_name: judge0-redis
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no
     ports:
       - "6379:6379"
-    volumes:
-      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - judge0-net
 
+# ── NETWORKS ──────────────────────────────────────────────────────
+networks:
+  cosmodex-net:
+    name: cosmodex-net
+  judge0-net:
+    name: judge0-net
+
+# ── VOLUMES ───────────────────────────────────────────────────────
 volumes:
-  postgres_data:
-  redis_data:
+  cosmodex-db-data:
+    name: cosmodex-db-data
+  judge0-db-data:
+    name: judge0-db-data

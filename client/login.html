@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>COSMODEX — Login</title>
+<meta name="description" content="Sign in to COSMODEX — the real-time 1v1 competitive coding battle arena.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: #0d1117;
+  color: #c9d1d9;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── ANIMATED BACKGROUND ── */
+.bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+.bg-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.15;
+  animation: float 8s ease-in-out infinite;
+}
+.bg-orb:nth-child(1) { width:400px; height:400px; background:#1f6feb; top:-100px; left:-100px; animation-delay:0s; }
+.bg-orb:nth-child(2) { width:300px; height:300px; background:#388bfd; bottom:-80px; right:-60px; animation-delay:-3s; }
+.bg-orb:nth-child(3) { width:200px; height:200px; background:#58a6ff; top:50%; left:60%; animation-delay:-6s; }
+.grid-overlay {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(88,166,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(88,166,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+@keyframes float {
+  0%,100%{transform:translate(0,0) scale(1)}
+  33%{transform:translate(30px,-20px) scale(1.05)}
+  66%{transform:translate(-20px,30px) scale(0.95)}
+}
+
+/* ── CARD ── */
+.card-wrap {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  padding: 20px;
+}
+.card {
+  background: rgba(22, 27, 34, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid #30363d;
+  border-radius: 16px;
+  padding: 40px 36px 36px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.5), 0 0 0 1px rgba(88,166,255,.06);
+  animation: slideUp .4s ease;
+}
+@keyframes slideUp {
+  from{opacity:0;transform:translateY(24px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+/* ── LOGO ── */
+.logo {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.logo-icon {
+  font-size: 36px;
+  display: block;
+  margin-bottom: 8px;
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+@keyframes pulse-glow {
+  0%,100%{filter:drop-shadow(0 0 8px #1f6feb)}
+  50%{filter:drop-shadow(0 0 20px #388bfd)}
+}
+.logo-text {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  background: linear-gradient(135deg, #58a6ff, #388bfd);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.logo-sub {
+  font-size: 12px;
+  color: #484f58;
+  margin-top: 4px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* ── TABS ── */
+.tabs {
+  display: flex;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 3px;
+  margin-bottom: 28px;
+  gap: 3px;
+}
+.tab {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #484f58;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+  font-family: 'Inter', sans-serif;
+}
+.tab.active {
+  background: #161b22;
+  color: #58a6ff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.3);
+}
+
+/* ── FORM ── */
+.form { display: none; flex-direction: column; gap: 16px; }
+.form.active { display: flex; }
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.field input {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  color: #e6edf3;
+  font-size: 14px;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+  font-family: 'Inter', sans-serif;
+  width: 100%;
+}
+.field input:focus {
+  border-color: #1f6feb;
+  box-shadow: 0 0 0 3px rgba(31,111,235,.15);
+}
+.field input::placeholder { color: #484f58; }
+.field input.err { border-color: #f85149; }
+
+/* ── SUBMIT BTN ── */
+.submit-btn {
+  background: linear-gradient(135deg, #1f6feb, #388bfd);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .2s;
+  margin-top: 4px;
+  font-family: 'Inter', sans-serif;
+  position: relative;
+  overflow: hidden;
+}
+.submit-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(31,111,235,.35);
+}
+.submit-btn:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+  transform: none;
+}
+.submit-btn .btn-loader {
+  display: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+  margin: 0 auto;
+}
+.submit-btn.loading .btn-text { display: none; }
+.submit-btn.loading .btn-loader { display: block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── ERROR / SUCCESS BANNER ── */
+.banner {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  display: none;
+  align-items: center;
+  gap: 8px;
+}
+.banner.show { display: flex; }
+.banner.err  { background: rgba(248,81,73,.12); border: 1px solid rgba(248,81,73,.3); color: #f85149; }
+.banner.ok   { background: rgba(63,185,80,.12); border: 1px solid rgba(63,185,80,.3); color: #3fb950; }
+
+/* ── DIVIDER ── */
+.divider {
+  text-align: center;
+  color: #484f58;
+  font-size: 12px;
+  position: relative;
+  margin: 4px 0;
+}
+.divider::before, .divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 42%;
+  height: 1px;
+  background: #30363d;
+}
+.divider::before { left: 0; }
+.divider::after  { right: 0; }
+
+/* ── PASSWORD STRENGTH ── */
+.strength-bar {
+  display: flex;
+  gap: 3px;
+  margin-top: 4px;
+}
+.strength-seg {
+  height: 3px;
+  flex: 1;
+  border-radius: 2px;
+  background: #21262d;
+  transition: background .3s;
+}
+.strength-seg.weak   { background: #f85149; }
+.strength-seg.medium { background: #d29922; }
+.strength-seg.strong { background: #3fb950; }
+
+/* ── FOOTER ── */
+.card-footer {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 12px;
+  color: #484f58;
+}
+.card-footer a { color: #58a6ff; text-decoration: none; }
+.card-footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="bg">
+  <div class="bg-orb"></div>
+  <div class="bg-orb"></div>
+  <div class="bg-orb"></div>
+  <div class="grid-overlay"></div>
+</div>
+
+<div class="card-wrap">
+  <div class="card">
+
+    <!-- Logo -->
+    <div class="logo">
+      <span class="logo-icon">⚔️</span>
+      <div class="logo-text">COSMODEX</div>
+      <div class="logo-sub">Real-time 1v1 Coding Battles</div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" id="tab-login" onclick="switchTab('login')">Sign In</button>
+      <button class="tab" id="tab-register" onclick="switchTab('register')">Register</button>
+    </div>
+
+    <!-- Shared banner -->
+    <div class="banner" id="banner"></div>
+
+    <!-- ── LOGIN FORM ── -->
+    <form class="form active" id="form-login" onsubmit="doLogin(event)">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email" required>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="submit-btn" id="btn-login">
+        <span class="btn-text">Sign In →</span>
+        <span class="btn-loader"></span>
+      </button>
+    </form>
+
+    <!-- ── REGISTER FORM ── -->
+    <form class="form" id="form-register" onsubmit="doRegister(event)">
+      <div class="field">
+        <label>Username</label>
+        <input type="text" id="reg-username" placeholder="CoolCoder99" autocomplete="username" minlength="3" maxlength="20" required>
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="reg-email" placeholder="you@example.com" autocomplete="email" required>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="reg-password" placeholder="Min 6 characters" autocomplete="new-password" minlength="6" required
+          oninput="updateStrength(this.value)">
+        <div class="strength-bar">
+          <div class="strength-seg" id="s1"></div>
+          <div class="strength-seg" id="s2"></div>
+          <div class="strength-seg" id="s3"></div>
+        </div>
+      </div>
+      <button type="submit" class="submit-btn" id="btn-register">
+        <span class="btn-text">Create Account →</span>
+        <span class="btn-loader"></span>
+      </button>
+    </form>
+
+    <div class="card-footer">
+      By continuing you agree to the <a href="#">Terms</a> &amp; <a href="#">Privacy Policy</a>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── If already logged in, skip login page ──
+const existingToken = localStorage.getItem('cosmodex_token');
+if (existingToken) {
+  window.location.replace('/arena.html');
+}
+
+function switchTab(tab) {
+  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+  document.getElementById('form-login').classList.toggle('active', tab === 'login');
+  document.getElementById('form-register').classList.toggle('active', tab === 'register');
+  hideBanner();
+}
+
+function showBanner(msg, type) {
+  const el = document.getElementById('banner');
+  el.textContent = (type === 'err' ? '⚠ ' : '✓ ') + msg;
+  el.className = `banner show ${type}`;
+}
+function hideBanner() {
+  document.getElementById('banner').className = 'banner';
+}
+
+function setLoading(btnId, loading) {
+  const btn = document.getElementById(btnId);
+  btn.disabled = loading;
+  btn.classList.toggle('loading', loading);
+}
+
+function updateStrength(pw) {
+  const segs = ['s1','s2','s3'];
+  let score = 0;
+  if (pw.length >= 6) score++;
+  if (pw.length >= 10) score++;
+  if (/[A-Z]/.test(pw) && /[0-9!@#$%]/.test(pw)) score++;
+  const cls = ['','weak','medium','strong'];
+  segs.forEach((id, i) => {
+    document.getElementById(id).className = 'strength-seg ' + (i < score ? cls[score] : '');
+  });
+}
+
+async function saveAndRedirect(data) {
+  localStorage.setItem('cosmodex_token', data.token);
+  localStorage.setItem('cosmodex_user', JSON.stringify(data.user));
+  showBanner(`Welcome, ${data.user.username}! Entering arena…`, 'ok');
+  await new Promise(r => setTimeout(r, 800));
+  window.location.replace('/arena.html');
+}
+
+async function doLogin(e) {
+  e.preventDefault();
+  hideBanner();
+  setLoading('btn-login', true);
+
+  const email    = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login failed');
+    await saveAndRedirect(data);
+  } catch (err) {
+    showBanner(err.message, 'err');
+    setLoading('btn-login', false);
+  }
+}
+
+async function doRegister(e) {
+  e.preventDefault();
+  hideBanner();
+  setLoading('btn-register', true);
+
+  const username = document.getElementById('reg-username').value.trim();
+  const email    = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Registration failed');
+    await saveAndRedirect(data);
+  } catch (err) {
+    showBanner(err.message, 'err');
+    setLoading('btn-register', false);
+  }
+}
+</script>
+</body>
+</html>

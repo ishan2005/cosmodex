@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>COSMODEX — Test Dashboard</title>
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:monospace;background:#0d1117;color:#c9d1d9;font-size:13px;display:flex;flex-direction:column;height:100vh}
+
+/* TOP BAR */
+.topbar{background:#161b22;border-bottom:1px solid #30363d;padding:10px 20px;display:flex;align-items:center;gap:14px;flex-shrink:0}
+.topbar h1{font-size:14px;color:#58a6ff;font-weight:700}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-ok{background:#0d3321;color:#3fb950;border:1px solid #1f6b31}
+.badge-err{background:#3d0a0a;color:#f85149;border:1px solid #6e2020}
+.badge-warn{background:#2d1f00;color:#d29922;border:1px solid #6e4c00}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.ml{margin-left:auto}
+
+/* LAYOUT */
+.body{display:flex;flex:1;overflow:hidden}
+
+/* SIDEBAR */
+.sidebar{width:180px;background:#161b22;border-right:1px solid #30363d;overflow-y:auto;flex-shrink:0;padding:8px 0}
+.sidebar-section{padding:10px 12px 4px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#484f58;font-weight:700}
+.nav-btn{display:block;width:100%;text-align:left;padding:7px 14px;border:none;background:none;color:#8b949e;cursor:pointer;font-size:12px;font-family:monospace;border-left:2px solid transparent;transition:all .12s}
+.nav-btn:hover{background:#1f2937;color:#c9d1d9}
+.nav-btn.active{background:#1c2840;color:#58a6ff;border-left-color:#58a6ff}
+
+/* MAIN */
+.main{flex:1;overflow-y:auto;padding:18px}
+.panel{display:none}
+.panel.active{display:block}
+.panel-title{font-size:13px;font-weight:700;color:#e6edf3;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #30363d;display:flex;align-items:center;gap:8px}
+.method{font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px}
+.GET{background:#0d2b52;color:#58a6ff}
+.POST{background:#0d3321;color:#3fb950}
+.PATCH{background:#2d220a;color:#d29922}
+.DELETE{background:#3d0a0a;color:#f85149}
+
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px;margin-bottom:12px}
+.card-title{font-size:11px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+
+label{display:block;font-size:11px;color:#8b949e;margin-bottom:3px;margin-top:8px}
+label:first-child{margin-top:0}
+input,select,textarea{width:100%;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:6px 9px;border-radius:5px;font-family:monospace;font-size:12px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#58a6ff}
+textarea{resize:vertical;min-height:80px}
+
+.btn{padding:6px 14px;border:none;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer;font-family:monospace;transition:all .12s}
+.btn-blue{background:#1f6feb;color:#fff}.btn-blue:hover{background:#388bfd}
+.btn-green{background:#238636;color:#fff}.btn-green:hover{background:#2ea043}
+.btn-red{background:#da3633;color:#fff}.btn-red:hover{background:#f85149}
+.btn-gray{background:#21262d;color:#c9d1d9;border:1px solid #30363d}.btn-gray:hover{background:#30363d}
+.btn-orange{background:#7d4e17;color:#fff}.btn-orange:hover{background:#9e6a03}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+
+.result{background:#0d1117;border:1px solid #30363d;border-radius:5px;padding:10px;margin-top:10px;font-size:11px;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;color:#3fb950}
+.result.err{color:#f85149}
+
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{text-align:left;padding:5px 8px;background:#0d1117;color:#8b949e;border-bottom:1px solid #30363d}
+td{padding:5px 8px;border-bottom:1px solid #21262d}
+tr:hover td{background:#1c1f26}
+.mono{font-family:monospace;font-size:10px;color:#484f58}
+
+.sep{border:none;border-top:1px solid #30363d;margin:14px 0}
+
+.sock-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#0d1117;border:1px solid #30363d;border-radius:5px;margin-bottom:12px}
+.sock-dot{width:8px;height:8px;border-radius:50%;background:#484f58;flex-shrink:0}
+.sock-dot.on{background:#3fb950}
+.info-box{background:#0d1117;border:1px solid #21262d;border-radius:4px;padding:8px;font-size:11px;color:#8b949e;margin-top:8px}
+.token-box{background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px 8px;font-size:10px;color:#58a6ff;word-break:break-all;max-height:52px;overflow:hidden;margin-top:6px}
+
+/* LOG */
+.logpanel{width:320px;background:#161b22;border-left:1px solid #30363d;display:flex;flex-direction:column;flex-shrink:0}
+.log-head{padding:10px 14px;border-bottom:1px solid #30363d;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.log-head span{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#484f58}
+.log-body{flex:1;overflow-y:auto;padding:6px}
+.log-row{padding:4px 6px;border-radius:3px;margin-bottom:3px;font-size:11px;line-height:1.5;border-left:2px solid transparent}
+.log-row.info{border-color:#30363d;color:#8b949e}
+.log-row.ok{border-color:#3fb950;color:#c9d1d9}
+.log-row.err{border-color:#f85149;color:#f85149}
+.log-row.ws{border-color:#bc8cff;color:#c9d1d9}
+.log-row.warn{border-color:#d29922;color:#d29922}
+.log-tag{font-weight:700;margin-right:4px}
+.log-row.info .log-tag{color:#484f58}
+.log-row.ok .log-tag{color:#3fb950}
+.log-row.err .log-tag{color:#f85149}
+.log-row.ws .log-tag{color:#bc8cff}
+.log-row.warn .log-tag{color:#d29922}
+.log-time{color:#484f58;font-size:10px;margin-right:4px}
+.log-data{margin-top:3px;background:#0d1117;border-radius:3px;padding:3px 6px;font-size:10px;color:#58a6ff;white-space:pre-wrap}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <h1>⚔ COSMODEX Test Dashboard</h1>
+  <span class="badge badge-err" id="srv-badge"><span class="dot"></span><span id="srv-txt">Checking…</span></span>
+  <span class="badge badge-warn" id="auth-badge" style="display:none"><span class="dot"></span>Authenticated</span>
+  <span class="ml" style="font-size:11px;color:#484f58">http://localhost:3000</span>
+</div>
+
+<div class="body">
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-section">🎮 Play</div>
+  <button class="nav-btn" onclick="window.open('/arena.html','_blank')" style="color:#3fb950;border-left-color:#3fb950">⚔ Live Arena ↗</button>
+  <div class="sidebar-section">System</div>
+  <button class="nav-btn active" onclick="go('health',this)">🩺 Health Check</button>
+  <div class="sidebar-section">Auth</div>
+  <button class="nav-btn" onclick="go('register',this)">📝 Register</button>
+  <button class="nav-btn" onclick="go('login',this)">🔑 Login</button>
+  <div class="sidebar-section">Data API</div>
+  <button class="nav-btn" onclick="go('users',this)">👥 Leaderboard</button>
+  <button class="nav-btn" onclick="go('profile',this)">📊 User Profile</button>
+  <button class="nav-btn" onclick="go('problems',this)">📚 Problems</button>
+  <div class="sidebar-section">Game</div>
+  <button class="nav-btn" onclick="go('rooms',this)">🏠 Rooms</button>
+  <button class="nav-btn" onclick="go('websocket',this)">⚡ Live Match</button>
+  <button class="nav-btn" onclick="go('matchmaking',this)">🎯 Matchmaking</button>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- HEALTH -->
+  <div id="panel-health" class="panel active">
+    <div class="panel-title"><span class="method GET">GET</span>/health</div>
+    <button class="btn btn-blue" onclick="checkHealth()">Run Health Check</button>
+    <div id="r-health" class="result">Click to test…</div>
+  </div>
+
+  <!-- REGISTER -->
+  <div id="panel-register" class="panel">
+    <div class="panel-title"><span class="method POST">POST</span>/api/auth/register</div>
+    <div class="card">
+      <label>Username</label><input id="reg-u" placeholder="e.g. StarCoder99">
+      <label>Email</label><input id="reg-e" placeholder="e.g. star@test.com">
+      <label>Password (min 6 chars)</label><input id="reg-p" type="password" value="password123">
+      <div class="btns">
+        <button class="btn btn-green" onclick="doRegister()">Register →</button>
+        <button class="btn btn-gray" onclick="fillReg()">Auto-fill</button>
+      </div>
+    </div>
+    <div id="r-register" class="result">Awaiting…</div>
+  </div>
+
+  <!-- LOGIN -->
+  <div id="panel-login" class="panel">
+    <div class="panel-title"><span class="method POST">POST</span>/api/auth/login</div>
+    <div class="card">
+      <label>Email</label><input id="log-e" value="ninja@cosmodex.com">
+      <label>Password</label><input id="log-p" type="password" value="password123">
+      <div class="btns">
+        <button class="btn btn-green" onclick="doLogin()">Login →</button>
+        <button class="btn btn-gray" onclick="switchUser()">Switch to AlgoMaster</button>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:#484f58">Seeded accounts: <code>ninja@cosmodex.com</code> / <code>master@cosmodex.com</code> — password: <code>password123</code></div>
+    </div>
+    <div id="r-login" class="result">Awaiting…</div>
+    <div style="margin-top:8px;font-size:11px;color:#8b949e">Active JWT:</div>
+    <div class="token-box" id="token-box">None</div>
+  </div>
+
+  <!-- LEADERBOARD -->
+  <div id="panel-users" class="panel">
+    <div class="panel-title"><span class="method GET">GET</span>/api/users — Leaderboard</div>
+    <button class="btn btn-blue" onclick="getLeaderboard()">Load Leaderboard</button>
+    <div id="r-users" class="result">Click to load…</div>
+  </div>
+
+  <!-- USER PROFILE -->
+  <div id="panel-profile" class="panel">
+    <div class="panel-title">User Profile & Stats</div>
+    <div class="card">
+      <label>User ID</label>
+      <input id="uid" placeholder="paste user ID here">
+      <div class="btns">
+        <button class="btn btn-blue" onclick="getProfile()">GET Profile</button>
+        <button class="btn btn-blue" onclick="getStats()">GET Stats</button>
+        <button class="btn btn-blue" onclick="getHistory()">GET Match History</button>
+        <button class="btn btn-gray" onclick="fillUid()">Use CodeNinja</button>
+      </div>
+    </div>
+    <div id="r-profile" class="result">Enter user ID above…</div>
+  </div>
+
+  <!-- PROBLEMS -->
+  <div id="panel-problems" class="panel">
+    <div class="panel-title"><span class="method GET">GET</span>/api/problems</div>
+    <div class="btns">
+      <button class="btn btn-blue" onclick="getProblems('')">All</button>
+      <button class="btn btn-blue" onclick="getProblems('EASY')">EASY</button>
+      <button class="btn btn-blue" onclick="getProblems('MEDIUM')">MEDIUM</button>
+      <button class="btn btn-blue" onclick="getProblems('BOSS')">BOSS</button>
+    </div>
+    <div id="r-problems" class="result">Click to load…</div>
+  </div>
+
+  <!-- ROOMS -->
+  <div id="panel-rooms" class="panel">
+    <div class="panel-title">Room Management</div>
+    <div class="row2">
+      <div class="card">
+        <div class="card-title">Create Room</div>
+        <label>Player 1 ID</label><input id="r-p1" placeholder="user ID">
+        <label>Player 2 ID</label><input id="r-p2" placeholder="user ID">
+        <div class="btns">
+          <button class="btn btn-green" onclick="createRoom()">POST /api/room</button>
+          <button class="btn btn-gray" onclick="autoRoom()">Auto-fill</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Lookup / Delete</div>
+        <label>Room ID</label><input id="r-id" placeholder="room-xxxx">
+        <div class="btns">
+          <button class="btn btn-blue" onclick="getRoom()">GET Room</button>
+          <button class="btn btn-red" onclick="delRoom()">DELETE Room</button>
+        </div>
+        <div style="margin-top:10px">
+          <button class="btn btn-gray" onclick="getQueue()">GET /api/queue</button>
+        </div>
+      </div>
+    </div>
+    <div id="r-rooms" class="result">Awaiting…</div>
+  </div>
+
+  <!-- WEBSOCKET / LIVE MATCH -->
+  <div id="panel-websocket" class="panel">
+    <div class="panel-title">⚡ Live Match — WebSocket Events</div>
+    <div class="sock-bar">
+      <div class="sock-dot" id="ws-dot"></div>
+      <span id="ws-txt" style="font-size:12px;color:#8b949e">Disconnected</span>
+      <div class="ml" style="display:flex;gap:6px">
+        <button class="btn btn-green" style="padding:4px 10px" onclick="wsConnect()">Connect</button>
+        <button class="btn btn-red" style="padding:4px 10px" onclick="wsDisconnect()">Disconnect</button>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="card">
+        <div class="card-title">Join Room</div>
+        <label>Room ID</label><input id="ws-room" placeholder="room-xxxx">
+        <label>User ID</label><input id="ws-user" placeholder="user ID">
+        <div class="btns"><button class="btn btn-blue" onclick="wsJoin()">join_room</button></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Submit Code</div>
+        <label>Problem ID</label><input id="ws-pid" placeholder="problem ID">
+        <label>Language</label>
+        <select id="ws-lang">
+          <option value="python">Python 3</option>
+          <option value="javascript">JavaScript</option>
+          <option value="java">Java</option>
+          <option value="cpp">C++</option>
+        </select>
+      </div>
+    </div>
+    <label style="margin-top:6px">Code</label>
+    <textarea id="ws-code" rows="5">a, b = map(int, input().split())
+print(a + b)</textarea>
+    <div class="btns" style="margin-top:10px">
+      <button class="btn btn-orange" onclick="wsSubmit()">⚡ submit_code</button>
+      <button class="btn btn-gray" onclick="wsSkip()">⏭ SKIP</button>
+      <button class="btn btn-gray" onclick="wsStay()">✋ STAY</button>
+      <button class="btn btn-gray" onclick="wsRedeem()">❤️ redeem_life</button>
+    </div>
+    <div class="info-box" id="ws-state">Connect and join a room to see live state updates here.</div>
+  </div>
+
+  <!-- MATCHMAKING -->
+  <div id="panel-matchmaking" class="panel">
+    <div class="panel-title">🎯 Matchmaking Queue</div>
+    <div class="sock-bar">
+      <div class="sock-dot" id="mm-dot"></div>
+      <span id="mm-txt" style="font-size:12px;color:#8b949e">Disconnected</span>
+      <div class="ml" style="display:flex;gap:6px">
+        <button class="btn btn-green" style="padding:4px 10px" onclick="mmConnect()">Connect</button>
+        <button class="btn btn-red" style="padding:4px 10px" onclick="mmDisconnect()">Disconnect</button>
+      </div>
+    </div>
+    <div class="card">
+      <label>User ID</label><input id="mm-uid" placeholder="paste user ID">
+      <div class="btns">
+        <button class="btn btn-green" onclick="mmJoin()">join_queue</button>
+        <button class="btn btn-red" onclick="mmLeave()">leave_queue</button>
+        <button class="btn btn-gray" onclick="mmStatus()">queue_status</button>
+      </div>
+    </div>
+    <div class="info-box" style="color:#484f58">
+      Open 2 browser tabs → Connect + join_queue with 2 different user IDs → <strong style="color:#3fb950">match_found</strong> fires automatically on both. The created roomId auto-fills the Live Match tab.
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- LOG PANEL -->
+<div class="logpanel">
+  <div class="log-head">
+    <span>Event Log</span>
+    <button class="btn btn-gray" style="padding:2px 8px;font-size:11px" onclick="clearLog()">Clear</button>
+  </div>
+  <div class="log-body" id="log"></div>
+</div>
+
+</div><!-- /body -->
+
+<script>
+// ── STATE ────────────────────────────────────────────────────────
+let token = '';
+let socket = null;
+let mmSocket = null;
+let users = [];
+let problems = [];
+
+// ── NAVIGATION ───────────────────────────────────────────────────
+function go(id, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+// ── LOGGING ──────────────────────────────────────────────────────
+function log(msg, type = 'info', data = null) {
+  const el = document.getElementById('log');
+  const d = document.createElement('div');
+  d.className = 'log-row ' + type;
+  const tags = { info: 'INFO', ok: 'OK', err: 'ERR', ws: 'WS', warn: 'WARN' };
+  const t = new Date().toLocaleTimeString('en-IN', { hour12: false });
+  d.innerHTML = `<span class="log-time">${t}</span><span class="log-tag">[${tags[type]||'LOG'}]</span>${msg}`;
+  if (data !== null) {
+    const pre = document.createElement('div');
+    pre.className = 'log-data';
+    pre.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    d.appendChild(pre);
+  }
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+}
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+
+// ── FETCH HELPER ─────────────────────────────────────────────────
+async function api(method, path, body, resultId) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  log(`${method} ${path}`, 'info');
+  const res = await fetch(path, opts);
+  const data = await res.json();
+  const type = res.ok ? 'ok' : 'err';
+  log(`${res.status} ${res.statusText}`, type, data);
+  if (resultId) {
+    const el = document.getElementById(resultId);
+    el.className = 'result' + (res.ok ? '' : ' err');
+    el.textContent = JSON.stringify(data, null, 2);
+  }
+  return { ok: res.ok, data, status: res.status };
+}
+
+// ── HEALTH ───────────────────────────────────────────────────────
+async function checkHealth() {
+  const { ok, data } = await api('GET', '/health', null, 'r-health');
+  const badge = document.getElementById('srv-badge');
+  const txt = document.getElementById('srv-txt');
+  if (ok && data.status === 'OK') {
+    badge.className = 'badge badge-ok';
+    txt.textContent = `OK · uptime ${data.uptime}s · DB: ${data.services.database} · Cache: ${data.services.cache}`;
+  } else {
+    badge.className = 'badge badge-err';
+    txt.textContent = 'Server error';
+  }
+}
+
+// Auto-run on load
+window.addEventListener('load', async () => {
+  checkHealth();
+  const { data: u } = await api('GET', '/api/users');
+  users = Array.isArray(u) ? u : [];
+  const { data: p } = await api('GET', '/api/problems');
+  problems = Array.isArray(p) ? p : [];
+  log(`Preloaded: ${users.length} users, ${problems.length} problems`, 'ok');
+  autoFillProfile();
+});
+
+// ── AUTH ─────────────────────────────────────────────────────────
+let regCount = 0;
+function fillReg() {
+  regCount++;
+  document.getElementById('reg-u').value = `Tester${Date.now().toString().slice(-4)}`;
+  document.getElementById('reg-e').value = `tester${regCount}@test.com`;
+  document.getElementById('reg-p').value = 'password123';
+}
+
+async function doRegister() {
+  const { ok, data } = await api('POST', '/api/auth/register', {
+    username: document.getElementById('reg-u').value,
+    email: document.getElementById('reg-e').value,
+    password: document.getElementById('reg-p').value,
+  }, 'r-register');
+  if (ok && data.token) setToken(data.token);
+}
+
+function switchUser() {
+  const cur = document.getElementById('log-e').value;
+  document.getElementById('log-e').value = cur === 'ninja@cosmodex.com'
+    ? 'master@cosmodex.com' : 'ninja@cosmodex.com';
+}
+
+async function doLogin() {
+  const { ok, data } = await api('POST', '/api/auth/login', {
+    email: document.getElementById('log-e').value,
+    password: document.getElementById('log-p').value,
+  }, 'r-login');
+  if (ok && data.token) setToken(data.token);
+}
+
+function setToken(t) {
+  token = t;
+  document.getElementById('token-box').textContent = t;
+  document.getElementById('auth-badge').style.display = 'inline-flex';
+  log('JWT token stored', 'ok');
+}
+
+// ── LEADERBOARD ──────────────────────────────────────────────────
+async function getLeaderboard() {
+  const { data } = await api('GET', '/api/users', null, null);
+  if (!Array.isArray(data)) return;
+  users = data;
+  const el = document.getElementById('r-users');
+  let html = '<table><tr><th>#</th><th>Username</th><th>ELO</th><th>ID</th></tr>';
+  data.forEach((u, i) => {
+    html += `<tr><td>${i+1}</td><td>${u.username}</td><td><b>${u.eloRating}</b></td><td class="mono">${u.id}</td></tr>`;
+  });
+  el.innerHTML = html + '</table>';
+  el.className = 'result';
+}
+
+// ── PROFILE ──────────────────────────────────────────────────────
+function autoFillProfile() {
+  if (users.length > 0) document.getElementById('uid').value = users[0].id;
+}
+function fillUid() { autoFillProfile(); }
+
+async function getProfile() {
+  const id = document.getElementById('uid').value.trim();
+  if (!id) { log('Enter a user ID', 'warn'); return; }
+  await api('GET', `/api/users/${id}`, null, 'r-profile');
+}
+
+async function getStats() {
+  const id = document.getElementById('uid').value.trim();
+  if (!id) { log('Enter a user ID', 'warn'); return; }
+  const { ok, data } = await api('GET', `/api/users/${id}/stats`, null, 'r-profile');
+  if (ok) {
+    const el = document.getElementById('r-profile');
+    el.innerHTML = `<table>
+      <tr><th>Field</th><th>Value</th></tr>
+      <tr><td>Username</td><td>${data.username}</td></tr>
+      <tr><td>ELO Rating</td><td><b>${data.eloRating}</b></td></tr>
+      <tr><td>Wins</td><td style="color:#3fb950">${data.wins}</td></tr>
+      <tr><td>Losses</td><td style="color:#f85149">${data.losses}</td></tr>
+      <tr><td>Total Matches</td><td>${data.totalMatches}</td></tr>
+      <tr><td>Win Rate</td><td>${data.winRate}</td></tr>
+      <tr><td>Submissions</td><td>${data.totalSubmissions}</td></tr>
+      <tr><td>Acceptance Rate</td><td>${data.acceptanceRate}</td></tr>
+    </table>`;
+  }
+}
+
+async function getHistory() {
+  const id = document.getElementById('uid').value.trim();
+  if (!id) { log('Enter a user ID', 'warn'); return; }
+  await api('GET', `/api/users/${id}/matches?limit=5`, null, 'r-profile');
+}
+
+// ── PROBLEMS ─────────────────────────────────────────────────────
+async function getProblems(diff) {
+  const q = diff ? `?difficulty=${diff}` : '';
+  const { data } = await api('GET', `/api/problems${q}`, null, null);
+  if (!Array.isArray(data)) return;
+  problems = data;
+  const el = document.getElementById('r-problems');
+  let html = '<table><tr><th>Title</th><th>Difficulty</th><th>Points</th><th>Tests</th><th>ID</th></tr>';
+  data.forEach(p => {
+    html += `<tr><td>${p.title}</td><td>${p.difficulty}</td><td>${p.basePoints}</td><td>${p.testCases?.length ?? '-'}</td><td class="mono">${p.id}</td></tr>`;
+  });
+  el.innerHTML = html + '</table>';
+  el.className = 'result';
+}
+
+// ── ROOMS ────────────────────────────────────────────────────────
+async function autoRoom() {
+  if (users.length < 2) await getLeaderboard();
+  if (users.length >= 2) {
+    document.getElementById('r-p1').value = users[0].id;
+    document.getElementById('r-p2').value = users[1].id;
+    log(`Auto-filled: ${users[0].username} vs ${users[1].username}`, 'ok');
+  }
+}
+
+async function createRoom() {
+  const p1 = document.getElementById('r-p1').value.trim();
+  const p2 = document.getElementById('r-p2').value.trim();
+  if (!p1 || !p2) { log('Both player IDs required', 'warn'); return; }
+  if (problems.length === 0) await getProblems('');
+  const problemIds = problems.map(p => p.id);
+  const { ok, data } = await api('POST', '/api/room', { player1Id: p1, player2Id: p2, problemIds }, 'r-rooms');
+  if (ok && data.roomId) {
+    document.getElementById('r-id').value = data.roomId;
+    document.getElementById('ws-room').value = data.roomId;
+    document.getElementById('ws-user').value = p1;
+    if (problems.length > 0) document.getElementById('ws-pid').value = problems[0].id;
+    log(`Room created: ${data.roomId} — auto-filled Live Match tab`, 'ok');
+  }
+}
+
+async function getRoom() {
+  const id = document.getElementById('r-id').value.trim();
+  if (!id) { log('Enter room ID', 'warn'); return; }
+  await api('GET', `/api/room/${id}`, null, 'r-rooms');
+}
+
+async function delRoom() {
+  const id = document.getElementById('r-id').value.trim();
+  if (!id) { log('Enter room ID', 'warn'); return; }
+  await api('DELETE', `/api/room/${id}`, null, 'r-rooms');
+}
+
+async function getQueue() {
+  await api('GET', '/api/queue', null, 'r-rooms');
+}
+
+// ── WEBSOCKET — MATCH ────────────────────────────────────────────
+function wsConnect() {
+  if (socket?.connected) { log('Already connected', 'warn'); return; }
+  socket = io(token ? { auth: { token } } : {});
+
+  socket.on('connect', () => {
+    document.getElementById('ws-dot').className = 'sock-dot on';
+    document.getElementById('ws-txt').textContent = 'Connected · ' + socket.id;
+    log('WebSocket connected: ' + socket.id, 'ok');
+  });
+
+  socket.on('disconnect', () => {
+    document.getElementById('ws-dot').className = 'sock-dot';
+    document.getElementById('ws-txt').textContent = 'Disconnected';
+    log('WebSocket disconnected', 'warn');
+  });
+
+  socket.on('room_state_update', (s) => {
+    const p = Object.values(s.players).map(pl =>
+      `${pl.username}: ${pl.lives}❤ ${pl.points}pts [${pl.status}]`
+    ).join(' | ');
+    document.getElementById('ws-state').innerHTML =
+      `<b>Stage ${s.currentStage}/6</b> · Timer: <b>${s.stageTimeRemaining}s</b> · Status: <b>${s.status}</b><br>${p}`;
+    log(`room_state_update → Stage ${s.currentStage}, ${s.stageTimeRemaining}s`, 'ws');
+  });
+
+  socket.on('submission_result', (r) => {
+    log(`submission_result → ${r.status} (${r.passedCount}/${r.totalCount} passed, +${r.pointsAwarded || 0}pts)`,
+      r.status === 'ACCEPTED' ? 'ok' : 'err', r);
+  });
+
+  socket.on('opponent_completed_stage', (d) => {
+    log(`opponent_completed_stage → ${d.decisionTimeRemaining}s to decide: SKIP or STAY`, 'warn', d);
+  });
+
+  socket.on('match_ended', (d) => {
+    log(`MATCH ENDED → Winner: ${d.winnerId || 'DRAW'} (${d.reason || ''})`, 'ok', d);
+  });
+
+  socket.on('error', (e) => log('Server error: ' + e.message, 'err'));
+}
+
+function wsDisconnect() { socket?.disconnect(); }
+
+function wsJoin() {
+  if (!socket?.connected) { log('Connect socket first', 'err'); return; }
+  const roomId = document.getElementById('ws-room').value.trim();
+  const userId = document.getElementById('ws-user').value.trim();
+  if (!roomId || !userId) { log('Room ID and User ID required', 'warn'); return; }
+  log(`emit join_room → room=${roomId}`, 'ws');
+  socket.emit('join_room', { roomId, userId });
+}
+
+function wsSubmit() {
+  if (!socket?.connected) { log('Connect socket first', 'err'); return; }
+  const roomId   = document.getElementById('ws-room').value.trim();
+  const userId   = document.getElementById('ws-user').value.trim();
+  const problemId= document.getElementById('ws-pid').value.trim();
+  const code     = document.getElementById('ws-code').value;
+  const language = document.getElementById('ws-lang').value;
+  if (!roomId || !userId || !problemId) { log('Room, User, and Problem ID all required', 'warn'); return; }
+  log(`emit submit_code → ${language}, ${code.length} chars`, 'ws');
+  socket.emit('submit_code', { roomId, userId, problemId, code, language });
+}
+
+function wsSkip() {
+  if (!socket?.connected) return;
+  const roomId = document.getElementById('ws-room').value.trim();
+  const userId = document.getElementById('ws-user').value.trim();
+  log('emit decide_skip_stay → SKIP', 'ws');
+  socket.emit('decide_skip_stay', { roomId, userId, choice: 'skip' });
+}
+
+function wsStay() {
+  if (!socket?.connected) return;
+  const roomId = document.getElementById('ws-room').value.trim();
+  const userId = document.getElementById('ws-user').value.trim();
+  log('emit decide_skip_stay → STAY', 'ws');
+  socket.emit('decide_skip_stay', { roomId, userId, choice: 'stay' });
+}
+
+function wsRedeem() {
+  if (!socket?.connected) return;
+  const roomId = document.getElementById('ws-room').value.trim();
+  const userId = document.getElementById('ws-user').value.trim();
+  log('emit redeem_life', 'ws');
+  socket.emit('redeem_life', { roomId, userId });
+}
+
+// ── MATCHMAKING ──────────────────────────────────────────────────
+function mmConnect() {
+  if (mmSocket?.connected) { log('MM already connected', 'warn'); return; }
+  mmSocket = io(token ? { auth: { token } } : {});
+
+  mmSocket.on('connect', () => {
+    document.getElementById('mm-dot').className = 'sock-dot on';
+    document.getElementById('mm-txt').textContent = 'Connected · ' + mmSocket.id;
+    log('Matchmaking socket connected', 'ok');
+  });
+
+  mmSocket.on('disconnect', () => {
+    document.getElementById('mm-dot').className = 'sock-dot';
+    document.getElementById('mm-txt').textContent = 'Disconnected';
+    log('Matchmaking disconnected', 'warn');
+  });
+
+  mmSocket.on('queue_joined',  (d) => log(`queue_joined → pos ${d.position}, size ${d.size}`, 'ok', d));
+  mmSocket.on('queue_left',    (d) => log('queue_left', 'ok'));
+  mmSocket.on('queue_status',  (d) => log(`queue_status → ${d.size} waiting, avg ${d.avgWaitSeconds}s`, 'ws', d));
+  mmSocket.on('queue_pulse',   (d) => log(`queue_pulse → ${d.size} in queue`, 'info'));
+
+  mmSocket.on('match_found', (d) => {
+    log(`MATCH FOUND → room ${d.roomId} vs ${d.opponentUsername} (ELO ${d.opponentElo})`, 'ok', d);
+    // Auto-fill Live Match tab
+    document.getElementById('ws-room').value = d.roomId;
+    document.getElementById('r-id').value = d.roomId;
+  });
+
+  mmSocket.on('error', (e) => log('MM error: ' + e.message, 'err'));
+}
+
+function mmDisconnect() { mmSocket?.disconnect(); }
+
+function mmJoin() {
+  if (!mmSocket?.connected) { log('Connect matchmaking socket first', 'err'); return; }
+  const uid = document.getElementById('mm-uid').value.trim();
+  if (!uid) { log('Enter user ID', 'warn'); return; }
+  log('emit join_queue → ' + uid, 'ws');
+  mmSocket.emit('join_queue', { userId: uid });
+}
+
+function mmLeave() {
+  if (!mmSocket?.connected) return;
+  const uid = document.getElementById('mm-uid').value.trim();
+  mmSocket.emit('leave_queue', { userId: uid });
+  log('emit leave_queue', 'ws');
+}
+
+function mmStatus() {
+  if (!mmSocket?.connected) { log('Connect first', 'err'); return; }
+  mmSocket.emit('queue_status');
+}
+</script>
+</body>
+</html>

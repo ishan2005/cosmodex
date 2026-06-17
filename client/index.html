@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>COSMODEX — 1v1 Coding Battles</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap');
+
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0e17;
+  --surface:#111827;
+  --border:#1f2937;
+  --muted:#4b5563;
+  --text:#e2e8f0;
+  --dim:#94a3b8;
+  --blue:#3b82f6;
+  --green:#22c55e;
+  --red:#ef4444;
+  --yellow:#f59e0b;
+  --purple:#a855f7;
+}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column}
+
+/* ── HIDDEN ── */
+.screen{display:none!important}
+.screen.on{display:flex!important}
+
+/* ── TOAST ── */
+#toast{
+  position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-80px);
+  background:#1e293b;border:1px solid var(--border);color:var(--text);
+  padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;
+  z-index:9999;transition:transform .3s ease;pointer-events:none;white-space:nowrap;
+}
+#toast.show{transform:translateX(-50%) translateY(0)}
+#toast.ok{border-color:var(--green);color:var(--green)}
+#toast.err{border-color:var(--red);color:var(--red)}
+#toast.warn{border-color:var(--yellow);color:var(--yellow)}
+
+/* ── LANDING ── */
+#landing{
+  flex-direction:column;align-items:center;justify-content:center;
+  gap:28px;padding:40px;flex:1;
+  background:radial-gradient(ellipse 80% 60% at 50% 0%, #0f1f3d 0%, var(--bg) 70%);
+}
+.logo-wrap{text-align:center}
+.logo{font-size:48px;font-weight:900;letter-spacing:4px;
+  background:linear-gradient(135deg,#60a5fa,#a855f7);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.tagline{color:var(--muted);font-size:14px;margin-top:6px;letter-spacing:1px}
+
+/* ── AUTH FORM ── */
+#auth-box{display:flex;flex-direction:column;align-items:center;gap:16px;width:100%}
+.auth-tabs{display:flex;border:1px solid var(--border);border-radius:10px;overflow:hidden;width:280px}
+.auth-tab{flex:1;padding:10px;background:transparent;border:none;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s}
+.auth-tab.active{background:var(--surface);color:var(--text)}
+.auth-form{display:flex;flex-direction:column;gap:12px;width:280px}
+.auth-form input{
+  background:var(--surface);border:1px solid var(--border);color:var(--text);
+  padding:12px 16px;border-radius:10px;font-size:14px;font-family:'Inter',sans-serif;
+  outline:none;transition:border-color .2s;
+}
+.auth-form input:focus{border-color:var(--blue)}
+.auth-form input::placeholder{color:var(--muted)}
+
+/* ── LOBBY CARD ── */
+#lobby-box{flex-direction:column;align-items:center;gap:20px}
+.lobby-card{
+  background:var(--surface);border:2px solid var(--green);
+  border-radius:16px;padding:24px 40px;text-align:center;
+  box-shadow:0 0 0 3px rgba(34,197,94,.1);
+}
+.lobby-card .avi{font-size:48px;margin-bottom:10px}
+.lobby-card .pname{font-size:18px;font-weight:700}
+.lobby-card .pelo{font-size:12px;color:var(--muted);margin-top:4px}
+.logout-btn{
+  background:transparent;border:1px solid var(--border);color:var(--muted);
+  padding:8px 20px;border-radius:8px;font-size:13px;cursor:pointer;
+  font-family:'Inter',sans-serif;transition:all .2s;
+}
+.logout-btn:hover{border-color:var(--red);color:var(--red)}
+
+.find-btn{
+  background:linear-gradient(135deg,var(--blue),var(--purple));
+  color:#fff;border:none;padding:14px 48px;border-radius:12px;
+  font-size:16px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;
+  transition:all .2s;box-shadow:0 4px 20px rgba(59,130,246,.3);
+}
+.find-btn:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(59,130,246,.4)}
+.find-btn:disabled{background:#1f2937;color:var(--muted);cursor:not-allowed;transform:none;box-shadow:none}
+
+/* ── QUEUE ── */
+#queue-screen{
+  flex-direction:column;align-items:center;justify-content:center;
+  gap:20px;flex:1;
+  background:radial-gradient(ellipse 60% 40% at 50% 50%, #0f1f3d 0%, var(--bg) 70%);
+}
+.queue-logo{font-size:28px;font-weight:900;letter-spacing:3px;
+  background:linear-gradient(135deg,#60a5fa,#a855f7);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.search-anim{display:flex;gap:8px;align-items:center;margin:10px 0}
+.search-dot{width:10px;height:10px;border-radius:50%;background:var(--blue);
+  animation:bounce 1.2s ease-in-out infinite}
+.search-dot:nth-child(2){animation-delay:.2s}
+.search-dot:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,80%,100%{transform:scale(0);opacity:.4}40%{transform:scale(1);opacity:1}}
+.queue-label{font-size:14px;color:var(--dim)}
+.queue-player{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:16px 28px;display:flex;align-items:center;gap:14px;min-width:280px;
+}
+.queue-player .avi{font-size:32px}
+.queue-player .qpname{font-size:15px;font-weight:700}
+.queue-player .qpelo{font-size:12px;color:var(--muted)}
+.cancel-btn{background:transparent;border:1px solid var(--border);color:var(--muted);
+  padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;font-family:'Inter',sans-serif;
+  transition:all .2s}
+.cancel-btn:hover{border-color:var(--red);color:var(--red)}
+
+/* ── FOUND FLASH ── */
+#found-screen{
+  flex-direction:column;align-items:center;justify-content:center;
+  gap:16px;flex:1;background:var(--bg);
+}
+.found-icon{font-size:72px;animation:pop .5s ease}
+@keyframes pop{0%{transform:scale(0)}80%{transform:scale(1.1)}100%{transform:scale(1)}}
+
+/* ── MATCH COUNTDOWN ── */
+.countdown-wrap{
+  display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:10px;
+}
+.countdown-label{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:600}
+#match-countdown{
+  width:80px;height:80px;border-radius:50%;
+  background:conic-gradient(var(--blue) 0deg, transparent 0deg);
+  display:flex;align-items:center;justify-content:center;
+  font-size:34px;font-weight:900;color:#fff;font-family:'JetBrains Mono',monospace;
+  box-shadow:0 0 30px rgba(59,130,246,.4);
+  position:relative;transition:background .9s linear;
+}
+#match-countdown::before{
+  content:'';position:absolute;inset:4px;border-radius:50%;
+  background:var(--bg);z-index:0;
+}
+#match-countdown span{position:relative;z-index:1;animation:cdPop .3s ease}
+@keyframes cdPop{0%{transform:scale(1.5);opacity:.5}100%{transform:scale(1);opacity:1}}
+.found-title{font-size:28px;font-weight:900;color:var(--green)}
+.vs-row{display:flex;align-items:center;gap:24px;margin-top:8px}
+.vs-player{text-align:center}
+.vs-player .vavi{font-size:40px}
+.vs-player .vname{font-size:15px;font-weight:700;margin-top:6px}
+.vs-player .velo{font-size:12px;color:var(--muted)}
+.vs-text{font-size:20px;font-weight:900;color:var(--muted)}
+
+/* ── GAME ── */
+#game{flex:1;display:none!important;flex-direction:column}
+#game.on{display:flex!important}
+
+.game-topbar{
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:10px 20px;display:flex;align-items:center;gap:16px;flex-shrink:0;
+}
+.stage-pill{
+  background:#1e3a5f;color:#93c5fd;font-size:11px;font-weight:700;
+  padding:4px 12px;border-radius:20px;letter-spacing:.5px;
+}
+.boss-pill{background:#3d0a1e;color:#ff7b93}
+.game-title{font-size:13px;font-weight:600;flex:1;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.timer-wrap{display:flex;align-items:center;gap:8px}
+.timer{
+  font-size:22px;font-weight:800;font-family:'JetBrains Mono',monospace;
+  font-variant-numeric:tabular-nums;color:var(--text);min-width:56px;text-align:right;
+}
+.timer.warn{color:var(--yellow)}
+.timer.danger{color:var(--red);animation:flash .5s infinite}
+@keyframes flash{0%,100%{opacity:1}50%{opacity:.4}}
+
+.game-body{display:grid;grid-template-columns:360px 1fr;flex:1;overflow:hidden}
+
+/* LEFT */
+.gleft{border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.problem-scroll{flex:1;overflow-y:auto;padding:18px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.prob-title{font-size:15px;font-weight:700;margin-bottom:8px}
+.diff-tag{
+  display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;
+  border-radius:4px;text-transform:uppercase;margin-bottom:12px;
+}
+.EASY{background:#1e3a5f;color:#93c5fd}
+.MEDIUM{background:#2d1f00;color:#fbbf24}
+.BOSS{background:#3d0a1e;color:#fb7185}
+.prob-desc{font-size:12px;color:var(--dim);line-height:1.7;white-space:pre-wrap;margin-bottom:14px}
+.example{
+  background:#0d1117;border:1px solid var(--border);border-radius:8px;
+  padding:10px 12px;margin-bottom:8px;font-size:11px;
+}
+.example .ex-label{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.example .ex-row{display:flex;gap:8px;align-items:baseline}
+.example .ex-key{color:var(--muted);min-width:52px}
+.example code{font-family:'JetBrains Mono',monospace;color:#a5b4fc;font-size:12px}
+
+.players-strip{
+  border-top:1px solid var(--border);padding:12px 16px;
+  display:flex;flex-direction:column;gap:8px;background:var(--bg);
+}
+.plabel{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:2px;font-weight:700}
+.prow{
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:9px 12px;display:flex;align-items:center;gap:10px;
+}
+.prow.mine{border-color:#1d4ed8}
+.prow .pavi{font-size:20px}
+.prow .pnm{font-size:12px;font-weight:700;flex:1}
+.prow .you{font-size:10px;color:var(--blue);margin-left:3px}
+.hearts{display:flex;gap:2px}
+.h{font-size:11px;filter:saturate(1)}
+.h.dead{filter:saturate(0);opacity:.25}
+.ppts{font-size:12px;font-weight:700;color:var(--yellow);min-width:46px;text-align:right}
+.pst{font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px}
+.CODING{background:#1e3a5f;color:#93c5fd}
+.DONE{background:#052e16;color:#4ade80}
+.STAYING{background:#3d1a0a;color:#fb923c}
+.WAITING_DECISION{background:#2d220a;color:#fbbf24}
+.SKIPPED{background:#1e1b4b;color:#a78bfa}
+.ELIMINATED{background:#3d0a0a;color:#f87171}
+.pstage-badge{
+  font-size:10px;font-weight:800;padding:2px 8px;border-radius:10px;
+  background:#1c2a3a;color:#60a5fa;border:1px solid #1d4ed8;
+  white-space:nowrap;flex-shrink:0;
+}
+
+/* RIGHT */
+.gright{display:flex;flex-direction:column;overflow:hidden}
+.editor-bar{
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;
+}
+.editor-bar select{
+  background:var(--bg);border:1px solid var(--border);color:var(--text);
+  padding:4px 10px;border-radius:6px;font-size:12px;font-family:'Inter',sans-serif;
+}
+.char-c{font-size:11px;color:var(--muted);margin-left:auto}
+#code{
+  flex:1;background:#0d1117;border:none;color:#e2e8f0;resize:none;outline:none;
+  padding:16px 18px;font-family:'JetBrains Mono',monospace;font-size:13px;
+  line-height:1.65;tab-size:4;
+}
+#code::placeholder{color:var(--muted)}
+
+.custom-input-area{
+  border-top:1px solid var(--border);
+  background:var(--surface);
+  flex-shrink:0;
+  display:flex;
+  flex-direction:column;
+}
+.custom-input-bar{
+  padding:6px 14px;
+  background:var(--surface);
+  display:flex;
+  align-items:center;
+  font-size:11px;
+  color:var(--muted);
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:.5px;
+  cursor:pointer;
+  user-select:none;
+}
+.custom-input-bar:hover{
+  background:#182030;
+  color:var(--text);
+}
+#custom-stdin{
+  background:#0d1117;
+  border:none;
+  border-top:1px solid var(--border);
+  color:#e2e8f0;
+  resize:none;
+  outline:none;
+  padding:10px 14px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:12px;
+  height:70px;
+}
+.output-area{
+  border-top:1px solid var(--border);max-height:150px;overflow-y:auto;
+  background:#0a0e17;flex-shrink:0;
+}
+.output-bar{
+  padding:6px 14px;background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);
+  font-weight:600;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;
+}
+.out-tag{font-size:11px;font-weight:700}
+.out-ok{color:var(--green)}
+.out-fail{color:var(--red)}
+#out-body{
+  padding:10px 16px;font-size:12px;font-family:'JetBrains Mono',monospace;
+  color:var(--dim);white-space:pre-wrap;line-height:1.6;min-height:36px;
+}
+
+/* FOOTER */
+.game-footer{
+  background:var(--surface);border-top:1px solid var(--border);
+  padding:10px 18px;display:flex;align-items:center;gap:10px;flex-shrink:0;
+}
+.gbtn{
+  padding:9px 22px;border:none;border-radius:8px;font-size:13px;font-weight:700;
+  cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;
+}
+.gbtn:disabled{opacity:.35;cursor:not-allowed}
+.gbtn-submit{background:var(--green);color:#000}
+.gbtn-submit:hover:not(:disabled){background:#16a34a}
+.gbtn-submit.judging{background:#1f2937;color:var(--muted)}
+.gbtn-run{background:#0e7490;color:#fff}
+.gbtn-run:hover:not(:disabled){background:#0891b2}
+.gbtn-run.running{background:#1f2937;color:var(--muted)}
+.gbtn-skip{background:transparent;border:1px solid var(--red);color:var(--red)}
+.gbtn-skip:hover:not(:disabled){background:#3d0a0a}
+.gbtn-stay{background:transparent;border:1px solid var(--green);color:var(--green)}
+.gbtn-stay:hover:not(:disabled){background:#052e16}
+.gbtn-redeem{background:#7c2d12;color:#fed7aa}
+.gbtn-redeem:hover:not(:disabled){background:#9a3412}
+.footer-right{margin-left:auto;font-size:12px;color:var(--muted)}
+
+/* WAITING BANNER */
+#waiting-banner{
+  position:absolute;top:0;left:0;right:0;bottom:0;
+  background:rgba(10,14,23,.88);display:none;
+  align-items:center;justify-content:center;
+  flex-direction:column;gap:14px;z-index:50;
+  backdrop-filter:blur(3px);
+}
+#waiting-banner.on{display:flex}
+.wb-icon{font-size:48px;animation:spin 2s linear infinite}
+@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+.wb-title{font-size:20px;font-weight:800;color:var(--yellow)}
+.wb-sub{font-size:13px;color:var(--dim)}
+.wb-count{font-size:36px;font-weight:900;color:var(--yellow);font-variant-numeric:tabular-nums;font-family:'JetBrains Mono',monospace}
+
+/* DECISION MODAL */
+#decision-modal{
+  position:fixed;inset:0;background:rgba(0,0,0,.75);
+  display:none;align-items:center;justify-content:center;z-index:100;
+  backdrop-filter:blur(4px);
+}
+#decision-modal.on{display:flex}
+.modal-box{
+  background:var(--surface);border:2px solid var(--yellow);border-radius:16px;
+  padding:32px 40px;text-align:center;max-width:380px;
+  box-shadow:0 0 40px rgba(245,158,11,.2);
+}
+.modal-icon{font-size:48px;margin-bottom:12px}
+.modal-title{font-size:18px;font-weight:800;color:var(--yellow);margin-bottom:8px}
+.modal-sub{font-size:13px;color:var(--dim);margin-bottom:20px;line-height:1.6}
+.modal-count{font-size:52px;font-weight:900;color:var(--yellow);margin-bottom:20px;
+  font-variant-numeric:tabular-nums;font-family:'JetBrains Mono',monospace}
+.modal-btns{display:flex;gap:12px;justify-content:center}
+.mbtn{padding:11px 24px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s}
+.mbtn-stay{background:var(--green);color:#000;border:none}
+.mbtn-stay:hover{background:#16a34a}
+.mbtn-skip{background:transparent;border:2px solid var(--red);color:var(--red)}
+.mbtn-skip:hover{background:#3d0a0a}
+
+/* RESULT */
+#result-screen{
+  flex-direction:column;align-items:center;justify-content:center;
+  gap:20px;flex:1;
+  background:radial-gradient(ellipse 60% 50% at 50% 40%, #0f1f3d 0%, var(--bg) 70%);
+}
+.res-icon{font-size:80px;animation:pop .6s ease}
+.res-title{font-size:36px;font-weight:900;letter-spacing:2px}
+.win-t{color:var(--green)}
+.lose-t{color:var(--red)}
+.draw-t{color:var(--yellow)}
+.res-sub{font-size:14px;color:var(--dim);max-width:380px;text-align:center;line-height:1.6}
+.stat-row{display:flex;gap:16px;margin-top:4px}
+.sbox{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:16px 24px;text-align:center;min-width:110px;
+}
+.sval{font-size:28px;font-weight:800}
+.slbl{font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
+.play-again{
+  background:linear-gradient(135deg,var(--blue),var(--purple));
+  color:#fff;border:none;padding:12px 36px;border-radius:10px;
+  font-size:15px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;
+  transition:all .2s;margin-top:6px;box-shadow:0 4px 20px rgba(59,130,246,.3);
+}
+.play-again:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(59,130,246,.4)}
+</style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<!-- ── LANDING ── -->
+<div id="landing" class="screen on">
+  <div class="logo-wrap">
+    <div class="logo">⚔ COSMODEX</div>
+    <div class="tagline">Real-time 1v1 Coding Battles</div>
+  </div>
+
+  <!-- AUTH BOX: shown when logged out -->
+  <div id="auth-box">
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-login" onclick="switchTab('login')">Login</button>
+      <button class="auth-tab" id="tab-register" onclick="switchTab('register')">Register</button>
+    </div>
+    <div id="login-form" class="auth-form">
+      <input id="li-email" type="email" placeholder="Email" autocomplete="email">
+      <input id="li-pass" type="password" placeholder="Password" autocomplete="current-password">
+      <button class="find-btn" id="login-btn" onclick="doLogin()">Login</button>
+    </div>
+    <div id="register-form" class="auth-form" style="display:none">
+      <input id="reg-username" type="text" placeholder="Username" autocomplete="username">
+      <input id="reg-email" type="email" placeholder="Email" autocomplete="email">
+      <input id="reg-pass" type="password" placeholder="Password" autocomplete="new-password">
+      <button class="find-btn" id="register-btn" onclick="doRegister()">Create Account</button>
+    </div>
+  </div>
+
+  <!-- LOBBY BOX: shown when logged in -->
+  <div id="lobby-box" style="display:none;flex-direction:column;align-items:center;gap:20px">
+    <div class="lobby-card">
+      <div class="avi" id="lobby-avi">🧑‍💻</div>
+      <div class="pname" id="lobby-name">—</div>
+      <div class="pelo" id="lobby-elo">ELO —</div>
+    </div>
+    <button class="find-btn" id="find-btn" onclick="findMatch()">⚔ Find Match</button>
+    <button class="logout-btn" onclick="doLogout()">Logout</button>
+  </div>
+</div>
+
+<!-- ── SEARCHING ── -->
+<div id="queue-screen" class="screen">
+  <div class="queue-logo">⚔ COSMODEX</div>
+  <div class="queue-player" id="my-card">
+    <div class="avi" id="q-avi">🥷</div>
+    <div>
+      <div class="qpname" id="q-name">—</div>
+      <div class="qpelo" id="q-elo">ELO —</div>
+    </div>
+  </div>
+  <div class="search-anim">
+    <div class="search-dot"></div>
+    <div class="search-dot"></div>
+    <div class="search-dot"></div>
+  </div>
+  <div class="queue-label" id="q-label">Searching for an opponent…</div>
+  <button class="cancel-btn" onclick="cancelQueue()">Cancel</button>
+</div>
+
+<!-- ── MATCH FOUND FLASH ── -->
+<div id="found-screen" class="screen">
+  <div class="found-icon">⚡</div>
+  <div class="found-title">Match Found!</div>
+  <div class="vs-row">
+    <div class="vs-player" id="vs-me">
+      <div class="vavi">🥷</div>
+      <div class="vname">—</div>
+      <div class="velo">ELO —</div>
+    </div>
+    <div class="vs-text">VS</div>
+    <div class="vs-player" id="vs-opp">
+      <div class="vavi">🧙</div>
+      <div class="vname">—</div>
+      <div class="velo">ELO —</div>
+    </div>
+  </div>
+  <div class="countdown-wrap">
+    <div class="countdown-label">Match starts in</div>
+    <div id="match-countdown"><span>5</span></div>
+  </div>
+</div>
+
+<!-- ── GAME ARENA ── -->
+<div id="game" class="screen" style="position:relative">
+  <div class="game-topbar">
+    <span class="stage-pill" id="stage-pill">Stage 1 / 6</span>
+    <span class="game-title" id="prob-header">Loading…</span>
+    <div class="timer-wrap">
+      <span style="font-size:11px;color:var(--muted)">⏱</span>
+      <span class="timer" id="timer">3:00</span>
+    </div>
+  </div>
+
+  <div class="game-body">
+    <!-- LEFT -->
+    <div class="gleft">
+      <div class="problem-scroll" id="prob-scroll">
+        <div style="color:var(--muted);font-size:13px">Loading problem…</div>
+      </div>
+      <div class="players-strip" id="players-strip">
+        <div class="plabel">Players</div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="gright">
+      <div class="editor-bar">
+        <span style="font-size:12px;color:var(--muted);font-weight:600">Editor</span>
+        <select id="lang" onchange="updateStarterCode()">
+          <option value="python">Python 3</option>
+          <option value="javascript">JavaScript</option>
+          <option value="java">Java</option>
+          <option value="cpp">C++</option>
+        </select>
+        <span class="char-c" id="chars">0 chars</span>
+      </div>
+      <textarea id="code" spellcheck="false"
+        oninput="document.getElementById('chars').textContent=this.value.length+' chars'"
+        placeholder="# Write your solution here…"></textarea>
+      <div class="custom-input-area">
+        <div class="custom-input-bar" onclick="toggleCustomInput()">
+          <span>📝 Custom Input</span>
+          <span id="custom-input-arrow" style="margin-left:auto;font-size:10px">▼</span>
+        </div>
+        <textarea id="custom-stdin" placeholder="Enter custom input to pass to stdin..." style="display:none"></textarea>
+      </div>
+      <div class="output-area">
+        <div class="output-bar">
+          <span>Output</span>
+          <span class="out-tag" id="out-tag"></span>
+        </div>
+        <div id="out-body">Run or submit your code to see results here.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="game-footer">
+    <button class="gbtn gbtn-run"    id="btn-run"  onclick="runCode()">▶ Run</button>
+    <button class="gbtn gbtn-submit" id="btn-sub"  onclick="submit()">⚡ Submit</button>
+    <button class="gbtn gbtn-skip"   id="btn-skip"   style="display:none" onclick="decide('skip')">⏭ Skip Stage</button>
+    <button class="gbtn gbtn-stay"   id="btn-stay"   style="display:none" onclick="decide('stay')">✋ Stay & Solve</button>
+    <button class="gbtn gbtn-redeem" id="btn-redeem" style="display:none" onclick="redeemLife()">❤️ +1 Life (100pts)</button>
+    <div class="footer-right" id="stage-info">Stage 1 of 6</div>
+  </div>
+  <!-- WAITING FOR OPPONENT BANNER (shown on winner while opponent decides) -->
+  <div id="waiting-banner">
+    <div class="wb-icon">⏳</div>
+    <div class="wb-title">You solved it first! 🎉</div>
+    <div class="wb-sub">Waiting for opponent to decide… (<span id="wb-count">15</span>s)</div>
+  </div>
+</div>
+
+<!-- ── DECISION MODAL ── -->
+<div id="decision-modal">
+  <div class="modal-box">
+    <div class="modal-icon">⚡</div>
+    <div class="modal-title">Opponent Solved It!</div>
+    <div class="modal-sub">Your opponent finished this stage.<br>What do you want to do?</div>
+    <div class="modal-count" id="modal-ct">15</div>
+    <div class="modal-btns">
+      <button class="mbtn mbtn-stay" onclick="decide('stay')">✋ Stay & Solve</button>
+      <button class="mbtn mbtn-skip" onclick="decide('skip')">⏭ Skip (−1 life)</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── RESULT ── -->
+<div id="result-screen" class="screen">
+  <div class="res-icon" id="ri">🏆</div>
+  <div class="res-title" id="rt">Result</div>
+  <div class="res-sub" id="rs"></div>
+  <div class="stat-row" id="rstats"></div>
+  <button class="play-again" onclick="location.reload()">⚔ Play Again</button>
+</div>
+
+<script>
+// ── AVATAR POOL ─────────────────────────────────
+const AVIS = ['🥷','🧙','🧑‍💻','👾','🤖','🦸','⚡','🔥','🐉','🦊'];
+function userAvi(name) { return AVIS[(name||'?').charCodeAt(0) % AVIS.length]; }
+
+// STARTER CODE PER PROBLEM TITLE & LANGUAGE
+const STARTERS = {
+  python: {
+    'Sum of Two Numbers':         'a, b = map(int, input().split())\nprint(a + b)',
+    'Reverse a String':           's = input()\nprint(s[::-1])',
+    'FizzBuzz List':              'n = int(input())\nout = []\nfor i in range(1, n+1):\n    if i%15==0: out.append("FizzBuzz")\n    elif i%3==0: out.append("Fizz")\n    elif i%5==0: out.append("Buzz")\n    else: out.append(str(i))\nprint(" ".join(out))',
+    'Is Prime Number':            'n = int(input())\nif n < 2: print("COMPOSITE")\nelse: print("PRIME" if all(n%i!=0 for i in range(2,int(n**.5)+1)) else "COMPOSITE")',
+    'Find Maximum Integer':       'print(max(map(int, input().split())))',
+    'Longest Palindromic Substring': 's = input()\n# Find the longest palindromic substring\nres = s[0]\nfor i in range(len(s)):\n    for l in [s[i:j+1] for j in range(i,len(s))]:\n        if l==l[::-1] and len(l)>len(res): res=l\nprint(res)',
+  },
+  javascript: {
+    default: 'const lines = require("fs").readFileSync("/dev/stdin","utf8").trim().split("\\n");\n\n// Write your solution here\n',
+  },
+  java: {
+    default: 'import java.util.Scanner;\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    // Write your solution here\n  }\n}',
+  },
+  cpp: {
+    default: '#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  // Write your solution here\n  return 0;\n}',
+  },
+};
+
+// ── STATE ──────────────────────────────────────
+let myId        = '';
+let myName      = '';
+let myToken     = '';
+let myElo       = 0;
+let socket      = null;
+let roomId      = '';
+let curProblem  = null;
+let allProblems = [];
+let gameState   = null;
+let submitting  = false;
+let decTimer    = null;
+
+// ── SCREENS ───────────────────────────────────
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
+  document.getElementById(id).classList.add('on');
+}
+
+// ── TOAST ─────────────────────────────────────
+let toastT;
+function toast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + type;
+  clearTimeout(toastT);
+  toastT = setTimeout(() => el.className = '', 3000);
+}
+
+// ── FORMAT ────────────────────────────────────
+function fmt(s){ return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}` }
+function hearts(n,max=5){
+  return Array.from({length:max},(_,i)=>`<span class="h ${i<n?'':'dead'}">❤</span>`).join('');
+}
+
+// ── PRELOAD ───────────────────────────────────
+window.addEventListener('load', async () => {
+  // Restore session from localStorage
+  try {
+    const savedToken = localStorage.getItem('cx_token');
+    const savedUser  = JSON.parse(localStorage.getItem('cx_user') || 'null');
+    if (savedToken && savedUser) {
+      myToken = savedToken; myId = savedUser.id;
+      myName = savedUser.username; myElo = savedUser.eloRating;
+      showLobby();
+      // Refresh ELO from server silently
+      const users = await fetch('/api/users').then(r=>r.json()).catch(()=>[]);
+      const me = Array.isArray(users) ? users.find(u=>u.id===myId) : null;
+      if (me) { myElo = me.eloRating; document.getElementById('lobby-elo').textContent = `ELO ${myElo}`; }
+    }
+  } catch(_) {}
+  allProblems = await fetch('/api/problems').then(r=>r.json()).catch(()=>[]);
+});
+
+// ── AUTH ──────────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('login-form').style.display    = tab==='login'    ? 'flex' : 'none';
+  document.getElementById('register-form').style.display = tab==='register' ? 'flex' : 'none';
+  document.getElementById('tab-login').classList.toggle('active',    tab==='login');
+  document.getElementById('tab-register').classList.toggle('active', tab==='register');
+}
+
+async function doLogin() {
+  const email = document.getElementById('li-email').value.trim();
+  const pass  = document.getElementById('li-pass').value;
+  if (!email || !pass) { toast('Fill in all fields','warn'); return; }
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true; btn.textContent = 'Logging in…';
+  const res = await fetch('/api/auth/login',{
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({email, password:pass}),
+  }).then(r=>r.json()).catch(()=>null);
+  btn.disabled = false; btn.textContent = 'Login';
+  if (!res?.token) { toast(res?.error||'Login failed','err'); return; }
+  saveSession(res); showLobby();
+}
+
+async function doRegister() {
+  const username = document.getElementById('reg-username').value.trim();
+  const email    = document.getElementById('reg-email').value.trim();
+  const pass     = document.getElementById('reg-pass').value;
+  if (!username || !email || !pass) { toast('Fill in all fields','warn'); return; }
+  const btn = document.getElementById('register-btn');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  const res = await fetch('/api/auth/register',{
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({username, email, password:pass}),
+  }).then(r=>r.json()).catch(()=>null);
+  btn.disabled = false; btn.textContent = 'Create Account';
+  if (!res?.token) { toast(res?.error||'Registration failed','err'); return; }
+  saveSession(res); showLobby();
+}
+
+function saveSession(res) {
+  myToken = res.token; myId = res.user.id;
+  myName = res.user.username; myElo = res.user.eloRating;
+  localStorage.setItem('cx_token', myToken);
+  localStorage.setItem('cx_user',  JSON.stringify(res.user));
+}
+
+function showLobby() {
+  document.getElementById('auth-box').style.display  = 'none';
+  const lb = document.getElementById('lobby-box');
+  lb.style.display = 'flex';
+  document.getElementById('lobby-avi').textContent  = userAvi(myName);
+  document.getElementById('lobby-name').textContent = myName;
+  document.getElementById('lobby-elo').textContent  = `ELO ${myElo}`;
+}
+
+function doLogout() {
+  localStorage.removeItem('cx_token'); localStorage.removeItem('cx_user');
+  myToken=''; myId=''; myName=''; myElo=0;
+  document.getElementById('lobby-box').style.display = 'none';
+  document.getElementById('auth-box').style.display  = 'flex';
+}
+
+// ── FIND MATCH ────────────────────────────────
+function findMatch() {
+  if (!myToken || !myId) { toast('Please log in first','err'); return; }
+  const btn = document.getElementById('find-btn');
+  btn.disabled = true; btn.textContent = 'Connecting…';
+
+  // Show queue screen with real user info
+  document.getElementById('q-avi').textContent  = userAvi(myName);
+  document.getElementById('q-name').textContent = myName;
+  document.getElementById('q-elo').textContent  = `ELO ${myElo}`;
+  show('queue-screen');
+
+  // Connect + join queue
+  socket = io({ auth: { token: myToken } });
+
+  socket.on('connect', () => {
+    socket.emit('join_queue', { userId: myId });
+  });
+
+  socket.on('queue_joined', d => {
+    document.getElementById('q-label').textContent =
+      `Searching… ${d.size > 1 ? d.size + ' players in queue' : 'waiting for opponent'}`;
+  });
+
+  socket.on('queue_pulse', d => {
+    document.getElementById('q-label').textContent = `${d.size} player(s) in queue…`;
+  });
+
+  socket.on('match_found', async d => {
+    roomId = d.roomId;
+
+    document.getElementById('vs-me').innerHTML  =
+      `<div class="vavi">${userAvi(myName)}</div><div class="vname">${myName}</div><div class="velo">ELO ${myElo}</div>`;
+    document.getElementById('vs-opp').innerHTML =
+      `<div class="vavi">${userAvi(d.opponentUsername)}</div><div class="vname">${d.opponentUsername}</div><div class="velo">ELO ${d.opponentElo}</div>`;
+
+    show('found-screen');
+
+    if (allProblems.length === 0)
+      allProblems = await fetch('/api/problems').then(r=>r.json()).catch(()=>[]);
+
+    // ── 5-second countdown before entering the arena ──────────────
+    const cdEl  = document.getElementById('match-countdown');
+    let   count = 5;
+    const TOTAL = 5;
+
+    const updateCountdown = (n) => {
+      const deg = Math.round(((TOTAL - n) / TOTAL) * 360);
+      cdEl.style.background = `conic-gradient(var(--blue) ${deg}deg, rgba(59,130,246,.15) ${deg}deg)`;
+      cdEl.innerHTML = n > 0
+        ? `<span>${n}</span>`
+        : `<span style="font-size:20px;letter-spacing:1px">GO!</span>`;
+    };
+    updateCountdown(count);
+
+    const cdInterval = setInterval(() => {
+      count--;
+      updateCountdown(count);
+      if (count <= 0) {
+        clearInterval(cdInterval);
+        setTimeout(() => {
+          registerGame();
+          socket.emit('join_room', { roomId, userId: myId });
+          show('game');
+          updateCountdown(5);
+        }, 600);
+      }
+    }, 1000);
+  });
+
+  socket.on('error', e => toast(e.message, 'err'));
+
+  socket.on('disconnect', () => {
+    if (document.getElementById('queue-screen').classList.contains('on')) {
+      toast('Disconnected from server', 'err');
+      show('landing');
+    }
+  });
+}
+
+function cancelQueue() {
+  socket?.emit('leave_queue', { userId: myId });
+  socket?.disconnect();
+  socket = null;
+  show('landing');
+  const btn = document.getElementById('find-btn');
+  if (btn) { btn.disabled = false; btn.textContent = '⚔ Find Match'; }
+}
+
+// ── GAME EVENTS ───────────────────────────────
+let waitingTimer = null;
+
+function registerGame() {
+  socket.on('room_state_update', state => {
+    gameState = state;
+    renderGame(state);
+  });
+
+  socket.on('submission_result', r => {
+    submitting = false;
+    const btn = document.getElementById('btn-sub');
+    btn.className = 'gbtn gbtn-submit';
+    btn.textContent = '⚡ Submit';
+    // Don't re-enable here — waiting_for_opponent or stage_advanced handles that
+
+    const tag  = document.getElementById('out-tag');
+    const body = document.getElementById('out-body');
+
+    if (r.status === 'ACCEPTED') {
+      tag.className = 'out-tag out-ok';
+      tag.textContent = `✅ ACCEPTED  ${r.passedCount}/${r.totalCount} tests`;
+      let t = `All ${r.passedCount} test cases passed! +${r.pointsAwarded} points\n`;
+      r.testCases?.filter(tc=>tc.isPublic).forEach((tc,i)=>{
+        t += `\nTest ${i+1} ✓  Input: ${tc.input}   Expected: ${tc.expected}`;
+      });
+      body.textContent = t;
+      body.style.color = 'var(--green)';
+      toast('You solved it! ✅ Waiting for opponent…', 'ok');
+    } else {
+      const label = r.status.replace(/_/g,' ');
+      tag.className = 'out-tag out-fail';
+      tag.textContent = `❌ ${label}  ${r.passedCount}/${r.totalCount} tests`;
+      let t = `${label}  —  ${r.livesRemaining} lives remaining\n`;
+      r.testCases?.filter(tc=>tc.isPublic).forEach((tc,i)=>{
+        t += `\nTest ${i+1} ${tc.passed?'✓':'✗'}  Input: ${tc.input}   Expected: ${tc.expected}   Got: ${tc.actual}`;
+      });
+      body.textContent = t;
+      body.style.color = r.livesRemaining === 0 ? 'var(--red)' : 'var(--yellow)';
+      toast(r.livesRemaining === 0 ? 'Eliminated! 💀' : `Wrong — ${r.livesRemaining} lives left`, 'err');
+      // Wrong answer — re-enable submit so they can try again
+      btn.disabled = false;
+    }
+  });
+
+  // ── WINNER: shown while opponent decides ──────────────────────
+  socket.on('waiting_for_opponent', d => {
+    showWaiting(d.decisionTimeRemaining ?? 15);
+  });
+
+  // ── BOTH PLAYERS: next stage starts ──────────────────────────
+  socket.on('stage_advanced', d => {
+    clearWaiting();
+    clearDecision();
+    toast(
+      d.reason === 'opponent_timed_out' ? 'Opponent timed out — moving to next stage!' :
+      d.reason === 'opponent_skipped'   ? 'Opponent skipped — both advancing!' :
+                                          'Opponent chose to stay — moving on!',
+      'ok'
+    );
+  });
+
+  // ── OPPONENT: decides SKIP or STAY ───────────────────────────
+  socket.on('opponent_completed_stage', d => {
+    startDecision(d.decisionTimeRemaining ?? 15);
+    toast('Opponent solved it — decide now!', 'warn');
+  });
+
+  socket.on('run_result', r => {
+    const btn  = document.getElementById('btn-run');
+    btn.className = 'gbtn gbtn-run';
+    btn.textContent = '\u25b6 Run';
+    btn.disabled = false;
+
+    const tag  = document.getElementById('out-tag');
+    const body = document.getElementById('out-body');
+
+    if (r.timedOut) {
+      tag.className = 'out-tag out-fail';
+      tag.textContent = '⏱ TIME LIMIT EXCEEDED';
+      body.textContent = 'Your code took too long to execute (Time limit: 5s).';
+      body.style.color = 'var(--yellow)';
+    } else if (r.stderr) {
+      tag.className = 'out-tag out-fail';
+      tag.textContent = '❌ RUN ERROR';
+      body.textContent = r.stderr;
+      body.style.color = 'var(--yellow)';
+    } else {
+      tag.className = 'out-tag out-ok';
+      tag.textContent = '✓ SUCCESS';
+      body.textContent = r.stdout || '(No output produced)';
+      body.style.color = 'var(--green)';
+    }
+  });
+
+  socket.on('match_ended', d => {
+    clearWaiting();
+    clearDecision();
+    endGame(d);
+  });
+}
+
+// ── RENDER GAME ───────────────────────────────
+function renderGame(state) {
+  // My personal stage (per-player) — what problem should I see?
+  const me     = state.players[myId];
+  const oppId  = state.playerIds.find(id => id !== myId);
+  const opp    = state.players[oppId];
+  const myStage = me?.currentStage ?? state.currentStage;
+  const isBoss  = myStage === 6;
+
+  // Stage pill — show MY personal stage, not the room-wide stage
+  const pill = document.getElementById('stage-pill');
+  pill.textContent = isBoss ? '⚔ BOSS BATTLE' : `My Stage ${myStage} / 6`;
+  pill.className = 'stage-pill' + (isBoss ? ' boss-pill' : '');
+
+  // Timer — personal per-player countdown (sprint stages); shared room clock (Boss Battle)
+  const myTimeRemaining = isBoss
+    ? state.stageTimeRemaining          // Boss: shared race clock
+    : (me?.stageTimeRemaining ?? state.stageTimeRemaining); // Sprint: MY personal timer
+  const t = document.getElementById('timer');
+  t.textContent = fmt(myTimeRemaining);
+  t.className = myTimeRemaining <= 10 ? 'timer danger'
+               : myTimeRemaining <= 30 ? 'timer warn' : 'timer';
+
+  // Load MY problem (based on my personal stage)
+  const pid  = state.problems[myStage - 1];
+  const prob = allProblems.find(p => p.id === pid);
+  if (prob && prob.id !== curProblem?.id) {
+    curProblem = prob;
+    renderProblem(prob);
+  }
+
+  // Players panel
+  document.getElementById('players-strip').innerHTML = `
+    <div class="plabel">Players</div>
+    ${playerRow(me, true)}
+    ${opp ? playerRow(opp, false) : ''}
+  `;
+
+  // Footer buttons
+  const inDecision = me?.status === 'WAITING_DECISION';
+  const isWaiting  = me?.status === 'DONE';
+  const isElim     = me?.status === 'ELIMINATED';
+  document.getElementById('btn-sub').style.display    = inDecision ? 'none' : '';
+  document.getElementById('btn-sub').disabled         = submitting || isWaiting || isElim;
+  document.getElementById('btn-skip').style.display   = inDecision ? '' : 'none';
+  document.getElementById('btn-stay').style.display   = inDecision ? '' : 'none';
+  document.getElementById('btn-redeem').style.display = isBoss && me?.points >= 100 ? '' : 'none';
+  document.getElementById('stage-info').textContent   =
+    `Stage ${myStage} of 6  ·  ${me?.points ?? 0} pts  ·  ${me?.lives ?? 0} lives`;
+
+  // If both players back to CODING → new stage → clear waiting
+  const allCoding = state.playerIds.every(id => state.players[id]?.status === 'CODING');
+  if (allCoding) { clearWaiting(); clearDecision(); }
+
+}
+
+function playerRow(p, isMe) {
+  const stage = p.currentStage || 1;
+  return `<div class="prow ${isMe?'mine':''}">
+    <span class="pavi">${userAvi(p.username)}</span>
+    <span class="pnm">${p.username}${isMe?'<span class="you">(you)</span>':''}</span>
+    <span class="pstage-badge">Stage ${stage}</span>
+    <span class="hearts">${hearts(p.lives)}</span>
+    <span class="ppts">${p.points}pts</span>
+    <span class="pst ${p.status}">${p.status.replace('_',' ')}</span>
+  </div>`;
+}
+
+
+function renderProblem(prob) {
+  document.getElementById('prob-header').textContent = prob.title;
+  const examples = (prob.testCases || []).map((tc, i) => `
+    <div class="example">
+      <div class="ex-label">Example ${i+1}</div>
+      <div class="ex-row"><span class="ex-key">Input:</span><code>${tc.input}</code></div>
+      <div class="ex-row"><span class="ex-key">Output:</span><code>${tc.expected}</code></div>
+    </div>`).join('');
+  document.getElementById('prob-scroll').innerHTML = `
+    <div class="prob-title">${prob.title}</div>
+    <span class="diff-tag ${prob.difficulty}">${prob.difficulty}</span>
+    <div class="prob-desc">${prob.description}</div>
+    ${examples}
+  `;
+  updateStarterCode();
+  // Reset output
+  document.getElementById('out-body').textContent = 'Submit your code to see results here.';
+  document.getElementById('out-body').style.color = 'var(--dim)';
+  document.getElementById('out-tag').textContent = '';
+}
+
+function updateStarterCode() {
+  if (!curProblem) return;
+  const lang = document.getElementById('lang').value;
+  const map  = STARTERS[lang] || {};
+  document.getElementById('code').value = map[curProblem.title] || map['default'] || '';
+  document.getElementById('chars').textContent = document.getElementById('code').value.length + ' chars';
+}
+
+// ── TOGGLE CUSTOM INPUT ───────────────────────
+function toggleCustomInput() {
+  const stdin = document.getElementById('custom-stdin');
+  const arrow = document.getElementById('custom-input-arrow');
+  if (stdin.style.display === 'none') {
+    stdin.style.display = 'block';
+    arrow.textContent = '▲';
+    stdin.focus();
+  } else {
+    stdin.style.display = 'none';
+    arrow.textContent = '▼';
+  }
+}
+
+// ── RUN CODE ──────────────────────────────────
+function runCode() {
+  const code = document.getElementById('code').value.trim();
+  const lang = document.getElementById('lang').value;
+  if (!code) { toast('Write some code first!', 'warn'); return; }
+
+  const btn = document.getElementById('btn-run');
+  btn.className = 'gbtn gbtn-run running';
+  btn.textContent = 'Running…';
+  btn.disabled = true;
+
+  const tag  = document.getElementById('out-tag');
+  const body = document.getElementById('out-body');
+  tag.textContent = '';
+  body.textContent = 'Running your code with custom input…';
+  body.style.color = 'var(--muted)';
+
+  const customStdin = document.getElementById('custom-stdin').value;
+
+  socket.emit('run_code', {
+    code,
+    language:  lang,
+    stdin:     customStdin
+  });
+}
+
+// ── SUBMIT CODE ────────────────────────────────────
+function submit() {
+  if (submitting || !curProblem) return;
+  const code = document.getElementById('code').value.trim();
+  if (!code) { toast('Write some code first!', 'warn'); return; }
+  submitting = true;
+  const btn = document.getElementById('btn-sub');
+  btn.className = 'gbtn gbtn-submit judging';
+  btn.textContent = '⏳ Judging…';
+  btn.disabled = true;
+  document.getElementById('out-body').textContent = 'Running test cases…';
+  document.getElementById('out-body').style.color = 'var(--dim)';
+  document.getElementById('out-tag').textContent = '';
+  socket.emit('submit_code', {
+    roomId, userId: myId,
+    problemId: curProblem.id,
+    code, language: document.getElementById('lang').value,
+  });
+}
+
+// ── DECISION ──────────────────────────────────
+function startDecision(secs) {
+  const modal = document.getElementById('decision-modal');
+  const ct    = document.getElementById('modal-ct');
+  modal.classList.add('on');
+  ct.textContent = secs;
+  clearInterval(decTimer);
+  let rem = secs;
+  decTimer = setInterval(() => {
+    rem--;
+    ct.textContent = rem;
+    if (rem <= 0) clearDecision();
+  }, 1000);
+}
+
+function clearDecision() {
+  clearInterval(decTimer);
+  document.getElementById('decision-modal').classList.remove('on');
+}
+
+// ── WAITING (shown on WINNER while opponent decides) ──────────────
+function showWaiting(secs) {
+  const banner = document.getElementById('waiting-banner');
+  const ct     = document.getElementById('wb-count');
+  banner.classList.add('on');
+  ct.textContent = secs;
+  clearInterval(waitingTimer);
+  let rem = secs;
+  waitingTimer = setInterval(() => {
+    rem--;
+    ct.textContent = Math.max(0, rem);
+    if (rem <= 0) clearWaiting();
+  }, 1000);
+}
+
+function clearWaiting() {
+  clearInterval(waitingTimer);
+  waitingTimer = null;
+  document.getElementById('waiting-banner').classList.remove('on');
+  // Re-enable submit in case it was blocked
+  submitting = false;
+  const btn = document.getElementById('btn-sub');
+  if (btn) {
+    btn.className = 'gbtn gbtn-submit';
+    btn.textContent = '⚡ Submit';
+    btn.disabled = false;
+  }
+}
+
+function decide(choice) {
+  clearDecision();
+  socket.emit('decide_skip_stay', { roomId, userId: myId, choice });
+  toast(choice === 'stay' ? '✋ Staying to solve…' : '⏭ Skipped (−1 life)', choice==='stay'?'ok':'warn');
+  document.getElementById('btn-skip').style.display = 'none';
+  document.getElementById('btn-stay').style.display = 'none';
+}
+
+function redeemLife() {
+  socket.emit('redeem_life', { roomId, userId: myId });
+  toast('❤️ Redeeming a life for 100 points…', 'ok');
+}
+
+// ── END GAME ──────────────────────────────────
+function endGame(d) {
+  show('result-screen');
+  const me = gameState?.players?.[myId];
+  const oppId = gameState?.playerIds?.find(id => id !== myId);
+  const opp   = gameState?.players?.[oppId];
+
+  let icon, title, cls, sub;
+  if (!d.winnerId) {
+    icon='🤝'; title='DRAW'; cls='draw-t';
+    sub=`Both fighters competed hard. The battle ends in a draw.`;
+  } else if (d.winnerId === myId) {
+    icon='🏆'; title='VICTORY'; cls='win-t';
+    sub=`You defeated ${opp?.username ?? 'your opponent'}! Your ELO has been updated.`;
+  } else {
+    icon='💀'; title='DEFEATED'; cls='lose-t';
+    sub=`${opp?.username ?? 'Your opponent'} won this battle. Keep practicing!`;
+  }
+
+  document.getElementById('ri').textContent = icon;
+  document.getElementById('rt').textContent = title;
+  document.getElementById('rt').className = 'res-title ' + cls;
+  document.getElementById('rs').textContent = sub;
+  document.getElementById('rstats').innerHTML = `
+    <div class="sbox"><div class="sval">${me?.points??0}</div><div class="slbl">Points</div></div>
+    <div class="sbox"><div class="sval">${me?.lives??0}</div><div class="slbl">Lives Left</div></div>
+    <div class="sbox"><div class="sval">${me?.submissionsCount??0}</div><div class="slbl">Submissions</div></div>
+  `;
+}
+</script>
+</body>
+</html>

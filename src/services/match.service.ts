@@ -32,6 +32,8 @@ export class MatchService {
       },
     });
 
+    const COUNTDOWN_MS = 5_000; // matches the 5-second client countdown
+    const now = Date.now() + COUNTDOWN_MS; // timer starts after countdown ends
     const players: Record<string, PlayerState> = {
       [p1.id]: {
         userId: p1.id,
@@ -43,6 +45,10 @@ export class MatchService {
         submissionsCount: 0,
         stageScores: {},
         decisionTimeout: null,
+        currentStage: 1,
+        stageStartTime: now,
+        stageDuration: STAGE_TIMER_SEC,
+        stageTimeRemaining: STAGE_TIMER_SEC,
       },
       [p2.id]: {
         userId: p2.id,
@@ -54,6 +60,10 @@ export class MatchService {
         submissionsCount: 0,
         stageScores: {},
         decisionTimeout: null,
+        currentStage: 1,
+        stageStartTime: now,
+        stageDuration: STAGE_TIMER_SEC,
+        stageTimeRemaining: STAGE_TIMER_SEC,
       },
     };
 
@@ -74,11 +84,15 @@ export class MatchService {
   }
 
   /**
-   * Handles Player B making a choice of either 'skip' or 'stay' in Phase 1
+   * Handles Player B making a choice of either 'skip' or 'stay' in Phase 1.
+   *
+   * STAY  → Player A (winner) advances to their next stage immediately as a reward.
+   *         Player B stays on the same stage to keep solving.
+   * SKIP  → Player B skips (loses 1 life) and both players advance together.
    */
   static async handleSkipOrStayDecision(
     roomId: string,
-    userId: string,
+    userId: string,   // userId = the LOSER (the one deciding)
     choice: 'skip' | 'stay'
   ): Promise<RoomState> {
     const roomState = await RedisService.getRoomState(roomId);
@@ -93,39 +107,132 @@ export class MatchService {
     }
 
     player.decisionTimeout = null;
+    const winnerId = roomState.playerIds.find((id) => id !== userId)!;
+    const winner   = roomState.players[winnerId];
 
     if (choice === 'skip') {
-      player.status = 'SKIPPED';
+      // ── SKIP: loser pays 1 life and both advance to winner's next stage ─
       player.lives = Math.max(0, player.lives - 1);
-      logger.info(`Player ${userId} chose to SKIP Stage ${roomState.currentStage}. Lost 1 life. Remaining: ${player.lives}`);
-      
-      // Since they skipped, they are ready to advance.
-      // Check if both players are ready to transition
-      return await this.checkAndAdvanceStage(roomId, roomState);
+      logger.info(`Player ${userId} chose to SKIP Stage ${player.currentStage}. Lost 1 life. Remaining: ${player.lives}`);
+
+      const nextStage = winner.currentStage + 1;
+      const isBoss    = nextStage === 6;
+      const limit     = isBoss ? BOSS_TIMER_SEC : STAGE_TIMER_SEC;
+      const skipNow   = Date.now();
+
+      if (player.lives <= 0) {
+        player.status = 'ELIMINATED';
+        logger.info(`Player ${userId} has been ELIMINATED after skipping with 0 lives.`);
+      } else {
+        player.currentStage       = nextStage;
+        player.status             = 'CODING';
+        // Both players start the new stage together — reset both personal timers
+        player.stageStartTime     = skipNow;
+        player.stageDuration      = limit;
+        player.stageTimeRemaining = limit;
+      }
+
+      winner.currentStage       = nextStage;
+      winner.status             = 'CODING';
+      winner.decisionTimeout    = null;
+      winner.stageStartTime     = skipNow;
+      winner.stageDuration      = limit;
+      winner.stageTimeRemaining = limit;
+
+      roomState.currentStage       = nextStage;
+      roomState.stageTimeRemaining = limit; // kept for Boss Battle shared display
+      roomState.stageEndTime       = skipNow + limit * 1000;
+      logger.info(`Both players move to Stage ${nextStage} (Boss: ${isBoss})`);
+
+      await RedisService.saveRoomState(roomId, roomState);
+      return roomState;
     } else {
+      // ── STAY: loser keeps coding; winner advances immediately as reward ─
       player.status = 'STAYING';
-      logger.info(`Player ${userId} chose to STAY on Stage ${roomState.currentStage}.`);
+      logger.info(`Player ${userId} chose to STAY on Stage ${player.currentStage}.`);
+      // Loser's personal timer is NOT touched — they keep their remaining time on this stage
+
+      const winnerNextStage = winner.currentStage + 1;
+      if (winnerNextStage > 6) {
+        // Winner finished all stages — they win the match
+        winner.status    = 'DONE';
+        roomState.status = 'COMPLETED';
+        await RedisService.saveRoomState(roomId, roomState);
+        await this.endMatch(roomId, winnerId);
+        return roomState;
+      }
+
+      winner.currentStage    = winnerNextStage;
+      winner.status          = 'CODING';
+      winner.decisionTimeout = null;
+      // Winner gets a FRESH timer for their new stage — independent of the loser's remaining time
+      winner.stageStartTime     = Date.now();
+      winner.stageDuration      = winnerNextStage === 6 ? BOSS_TIMER_SEC : STAGE_TIMER_SEC;
+      winner.stageTimeRemaining = winner.stageDuration;
+      logger.info(`Winner ${winnerId} advances to Stage ${winnerNextStage} as reward for finishing first.`);
+
+      // Room-level stage = highest personal stage (used for Boss Battle shared clock)
+      roomState.currentStage = Math.max(roomState.currentStage, winnerNextStage);
+
       await RedisService.saveRoomState(roomId, roomState);
       return roomState;
     }
   }
 
   /**
-   * Evaluates if we need to transition the match to the next stage.
+   * Called after a player solves/fails their personal stage.
+   * Advances only the players that have finished THEIR OWN current stage.
+   * Does not force the other player to change stage.
    */
   private static async checkAndAdvanceStage(roomId: string, roomState: RoomState): Promise<RoomState> {
-    const players = Object.values(roomState.players);
-    const allDoneOrSkipped = players.every(
-      (p) => p.status === 'DONE' || p.status === 'SKIPPED' || p.status === 'ELIMINATED'
-    );
+    const players       = Object.values(roomState.players);
+    const activePlayers = players.filter((p) => p.status !== 'ELIMINATED');
 
-    if (allDoneOrSkipped) {
-      return await this.advanceStage(roomId, roomState);
+    // All eliminated → draw
+    if (activePlayers.length === 0) {
+      roomState.status = 'COMPLETED';
+      await RedisService.saveRoomState(roomId, roomState);
+      await this.endMatch(roomId, null);
+      return roomState;
     }
-    // Save mutated player statuses in Redis cache
+
+    // Advance each player who is individually done with THEIR stage
+    for (const p of activePlayers) {
+      if (p.status === 'DONE' || p.status === 'SKIPPED') {
+        const nextPersonalStage = p.currentStage + 1;
+        if (nextPersonalStage > 6) {
+          // This player completed all stages — they win
+          roomState.status = 'COMPLETED';
+          await RedisService.saveRoomState(roomId, roomState);
+          await this.endMatch(roomId, p.userId);
+          return roomState;
+        }
+        p.currentStage    = nextPersonalStage;
+        p.status          = 'CODING';
+        p.decisionTimeout = null;
+        // Give this player a fresh independent timer for their new stage
+        p.stageStartTime     = Date.now();
+        p.stageDuration      = nextPersonalStage === 6 ? BOSS_TIMER_SEC : STAGE_TIMER_SEC;
+        p.stageTimeRemaining = p.stageDuration;
+      }
+    }
+
+    // Room-level stage = highest personal stage (used for Boss Battle shared clock sync)
+    const maxStage = Math.max(...roomState.playerIds.map((id) => roomState.players[id].currentStage));
+    if (maxStage !== roomState.currentStage) {
+      roomState.currentStage = maxStage;
+      if (maxStage === 6) {
+        // Boss Battle begins — set shared room-level countdown
+        roomState.stageTimeRemaining = BOSS_TIMER_SEC;
+        roomState.stageEndTime       = Date.now() + BOSS_TIMER_SEC * 1000;
+        logger.info(`Room ${roomId} entered Boss Battle (Stage 6). Shared 20-min timer started.`);
+      }
+    }
+
     await RedisService.saveRoomState(roomId, roomState);
     return roomState;
   }
+
 
   /**
    * Deducts 1 life for incorrect submissions during the high-risk "Stay" period.
@@ -146,7 +253,8 @@ export class MatchService {
 
     if (player.lives <= 0) {
       player.status = 'ELIMINATED';
-      logger.info(`Player ${userId} has been ELIMINATED from this stage (out of lives).`);
+      // Lives are GLOBAL (whole-game). ELIMINATED means the player is out for the rest of the match.
+      logger.info(`Player ${userId} has been ELIMINATED (0 lives). They are out for the remainder of the match.`);
       return await this.checkAndAdvanceStage(roomId, roomState);
     }
 
@@ -155,7 +263,8 @@ export class MatchService {
   }
 
   /**
-   * Handles a successful code submission (pass 100% test cases)
+   * Handles a successful code submission (pass 100% test cases).
+   * Uses player.currentStage (per-player) not room.currentStage.
    */
   static async handleCorrectSubmission(
     roomId: string,
@@ -168,74 +277,82 @@ export class MatchService {
     const player = roomState.players[userId];
     if (!player) throw new Error('Player not in room');
 
-    const isPhase1 = roomState.currentStage <= 5;
-    
-    if (isPhase1) {
-      // In Phase 1 (Sprint):
-      // Check if they are the first to finish
-      const opponentId = roomState.playerIds.find((id) => id !== userId)!;
-      const opponent = roomState.players[opponentId];
-      
-      const isFirst = Object.values(roomState.players).every((p) => p.status !== 'DONE');
+    const playerStage = player.currentStage;
+    const isBoss      = playerStage === 6;
 
-      player.status = 'DONE';
-      player.stageScores[roomState.currentStage] = pointsAwarded;
-      player.points += pointsAwarded;
-
-      let firstFinisher = false;
-
-      if (isFirst) {
-        firstFinisher = true;
-        logger.info(`Player ${userId} is the first to complete Stage ${roomState.currentStage}`);
-        
-        // Interrupt opponent, putting them into WAITING_DECISION
-        if (opponent.status === 'CODING') {
-          opponent.status = 'WAITING_DECISION';
-          // 15 seconds decision window
-          opponent.decisionTimeout = Date.now() + 15 * 1000;
-        }
-      } else {
-        logger.info(`Player ${userId} completed Stage ${roomState.currentStage} after choosing STAY`);
-      }
-
-      const updatedState = await this.checkAndAdvanceStage(roomId, roomState);
-      return { roomState: updatedState, firstFinisher };
-    } else {
-      // In Phase 2 (Boss Battle):
-      // Correct submission means immediate victory!
-      player.status = 'DONE';
+    // ── Boss Battle: first correct answer wins the whole match ────────
+    if (isBoss) {
+      player.status  = 'DONE';
       player.points += pointsAwarded;
       roomState.status = 'COMPLETED';
-      
       await RedisService.saveRoomState(roomId, roomState);
       await this.endMatch(roomId, userId);
-
       return { roomState, firstFinisher: true };
     }
+
+    // ── Sprint stage (1–5) ────────────────────────────────────────────
+    const opponentId = roomState.playerIds.find((id) => id !== userId)!;
+    const opponent   = roomState.players[opponentId];
+
+    // "First finisher on this stage" = opponent is on the SAME stage and hasn't finished yet
+    const isFirstOnStage =
+      opponent.currentStage === playerStage &&
+      opponent.status !== 'DONE' &&
+      opponent.status !== 'SKIPPED' &&
+      opponent.status !== 'ELIMINATED';
+
+    // BUG 7 FIX: A player in 'STAYING' status who submits correctly must have their status
+    // set to 'DONE' BEFORE calling checkAndAdvanceStage. checkAndAdvanceStage only advances
+    // players whose status is 'DONE' or 'SKIPPED' — leaving it as 'STAYING' causes them to
+    // be permanently skipped by the advance loop and stuck on their stage forever.
+    player.status = 'DONE';
+    player.stageScores[playerStage] = pointsAwarded;
+    player.points += pointsAwarded;
+
+    let firstFinisher = false;
+
+    if (isFirstOnStage) {
+      firstFinisher = true;
+      logger.info(`Player ${userId} is the first to complete Stage ${playerStage}`);
+
+      // Interrupt opponent with decision window
+      if (opponent.status === 'CODING' || opponent.status === 'STAYING') {
+        opponent.status          = 'WAITING_DECISION';
+        opponent.decisionTimeout = Date.now() + 15 * 1000;
+      }
+
+      // ── CRITICAL: do NOT advance the winner's stage yet. ──────────────
+      // The winner stays DONE on their current stage.
+      // handleSkipOrStayDecision will advance them after the opponent decides.
+      await RedisService.saveRoomState(roomId, roomState);
+      return { roomState, firstFinisher: true };
+    }
+
+    // ── Not first finisher: either B caught up after STAY, or both solved simultaneously ──
+    // Advance this player's personal stage (they finished their own stage).
+    logger.info(`Player ${userId} completed Stage ${playerStage} (catch-up / async)`);
+    const updatedState = await this.checkAndAdvanceStage(roomId, roomState);
+    return { roomState: updatedState, firstFinisher: false };
   }
 
   /**
-   * Increments stage, resetting player states. Transitions to Boss Battle if stage > 5.
+   * Hard-advances the room to the next stage (used by timer timeout).
+   * Resets all player stages to the new room stage.
    */
   private static async advanceStage(roomId: string, roomState: RoomState): Promise<RoomState> {
     roomState.currentStage += 1;
     const isBoss = roomState.currentStage === 6;
-
     logger.info(`Advancing room ${roomId} to Stage ${roomState.currentStage} (Boss: ${isBoss})`);
 
     const limit = isBoss ? BOSS_TIMER_SEC : STAGE_TIMER_SEC;
     roomState.stageTimeRemaining = limit;
-    roomState.stageEndTime = Date.now() + limit * 1000;
+    roomState.stageEndTime       = Date.now() + limit * 1000;
 
     for (const pid of roomState.playerIds) {
       const player = roomState.players[pid];
-      
-      // Reset statuses for the next stage (unless they are already dead)
-      if (isBoss) {
-        player.status = 'CODING';
-        player.decisionTimeout = null;
-      } else {
-        player.status = 'CODING';
+      if (player.status !== 'ELIMINATED') {
+        player.currentStage    = roomState.currentStage; // sync per-player stage
+        player.status          = 'CODING';
         player.decisionTimeout = null;
       }
     }
@@ -245,36 +362,48 @@ export class MatchService {
   }
 
   /**
-   * Handles stage timeouts. Deducts lives from anyone who hasn't completed/skipped.
+   * Handles BOSS BATTLE timeout only (Stage 6 shared timer).
+   * Sprint stage per-player timeouts are handled by handlePlayerTimeouts.
    */
   static async handleStageTimeout(roomId: string): Promise<RoomState> {
     const roomState = await RedisService.getRoomState(roomId);
     if (!roomState) throw new Error('Match session not found');
 
-    const isBoss = roomState.currentStage === 6;
-    logger.info(`Stage ${roomState.currentStage} TIMEOUT in room ${roomId}.`);
+    logger.info(`Boss Battle TIMEOUT in room ${roomId}. Match ends in a draw.`);
+    roomState.status = 'COMPLETED';
+    await RedisService.saveRoomState(roomId, roomState);
+    await this.endMatch(roomId, null);
+    return roomState;
+  }
 
-    if (isBoss) {
-      // Boss battle timeout: match ends in a draw (or no winner)
-      roomState.status = 'COMPLETED';
-      await RedisService.saveRoomState(roomId, roomState);
-      await this.endMatch(roomId, null);
-      return roomState;
-    }
+  /**
+   * Handles per-player sprint stage timeouts (Stages 1-5).
+   * Called by the background timer when any player's personal stageTimeRemaining hits 0.
+   * Deducts 1 life from timed-out players and advances their stage.
+   */
+  static async handlePlayerTimeouts(roomId: string): Promise<RoomState> {
+    const roomState = await RedisService.getRoomState(roomId);
+    if (!roomState) throw new Error('Match session not found');
 
-    // Phase 1 Sprint timeout
+    const now = Date.now();
     for (const pid of roomState.playerIds) {
       const player = roomState.players[pid];
-      if (player.status !== 'DONE' && player.status !== 'SKIPPED') {
-        // Did not finish: lost a life
+      if (['ELIMINATED', 'DONE', 'SKIPPED', 'WAITING_DECISION'].includes(player.status)) continue;
+
+      const elapsed = Math.floor((now - player.stageStartTime) / 1000);
+      if (elapsed >= player.stageDuration) {
         player.lives = Math.max(0, player.lives - 1);
-        player.status = player.lives <= 0 ? 'ELIMINATED' : 'DONE';
-        logger.info(`Player ${player.username} failed to finish before timeout. Lost 1 life. Remaining: ${player.lives}`);
+        if (player.lives <= 0) {
+          player.status = 'ELIMINATED';
+          logger.info(`[Timer] Player ${player.username} timed out → ELIMINATED (0 lives).`);
+        } else {
+          player.status = 'DONE'; // checkAndAdvanceStage will move them to the next stage
+          logger.info(`[Timer] Player ${player.username} timed out on Stage ${player.currentStage}. Lives left: ${player.lives}`);
+        }
       }
     }
 
-    // Force transition to next stage
-    return await this.advanceStage(roomId, roomState);
+    return this.checkAndAdvanceStage(roomId, roomState);
   }
 
   /**
@@ -306,7 +435,7 @@ export class MatchService {
   /**
    * Finalizes the match, updates ELO, and deletes Redis cache.
    */
-  static async endMatch(roomId: string, winnerId: string | null): Promise<void> {
+  static async endMatch(roomId: string, winnerId: string | null): Promise<void> { // public — called from match.handler too
     const roomState = await RedisService.getRoomState(roomId);
     if (!roomState) return;
 

@@ -42,3 +42,7 @@ Thumbs.db
 
 # PDF files (design docs — too large for git)
 *.pdf
+
+# Agent scratch files
+scratch/
+test_client.html
