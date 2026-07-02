@@ -1,7 +1,7 @@
 # COSMODEX Battle Arena — API Documentation
 
 > **Base URL (local):** `http://localhost:3000`
-> **Base URL (deployed):** _TBD — will be updated after deployment_
+> **Base URL (deployed):** `https://cosmodex-battle-server.onrender.com`
 > **WebSocket URL:** Same as base URL (Socket.IO auto-negotiates)
 
 Complete integration guide for the frontend team. This document covers every REST endpoint, every WebSocket event, authentication flows, and game lifecycle.
