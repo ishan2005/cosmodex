@@ -84,6 +84,7 @@ class InMemoryRedis {
 class RedisWrapper {
   private client: any;
   private isFallback = false;
+  private ready: Promise<void>;
 
   constructor() {
     const url = process.env.REDIS_URL;
@@ -92,29 +93,51 @@ class RedisWrapper {
       try {
         const clientInstance = new Redis(url, {
           maxRetriesPerRequest: 1,
-          connectTimeout: 1000,
-          retryStrategy: () => null, // stop retrying on failed connections immediately
+          connectTimeout: 2000,
+          lazyConnect: true,             // Don't auto-connect — we'll do it manually
+          retryStrategy: () => null,     // Stop retrying on failed connections immediately
         });
 
-        // Capture failed connection events to avoid throwing uncaught errors
+        this.client = clientInstance;
+
+        // Attempt to connect and verify within 2 seconds.
+        // If it fails, fall back to InMemoryRedis BEFORE any game operations run.
+        this.ready = clientInstance.connect()
+          .then(() => clientInstance.ping())
+          .then(() => {
+            logger.info('Redis connection established successfully.');
+          })
+          .catch((err: Error) => {
+            logger.warn(`Redis connection failed: ${err.message}. Switching to InMemory storage.`);
+            try { clientInstance.disconnect(); } catch {}
+            this.client = new InMemoryRedis();
+            this.isFallback = true;
+          });
+
+        // Also catch async errors after initial connection (e.g. Redis goes down mid-game)
         clientInstance.on('error', (err) => {
           if (!this.isFallback) {
-            logger.warn(`Redis connection failed: ${err.message}. Seamlessly switching to InMemory storage.`);
+            logger.warn(`Redis connection lost: ${err.message}. Switching to InMemory storage.`);
             this.client = new InMemoryRedis();
             this.isFallback = true;
           }
         });
-
-        this.client = clientInstance;
       } catch (error) {
-        logger.warn(`Failed to initialize ioredis connection. Falling back to InMemory storage.`);
+        logger.warn(`Failed to initialize ioredis. Falling back to InMemory storage.`);
         this.client = new InMemoryRedis();
         this.isFallback = true;
+        this.ready = Promise.resolve();
       }
     } else {
       this.client = new InMemoryRedis();
       this.isFallback = true;
+      this.ready = Promise.resolve();
     }
+  }
+
+  /** Wait for the initial connection attempt to finish before using the client. */
+  async waitForReady(): Promise<void> {
+    await this.ready;
   }
 
   async get(key: string): Promise<string | null> {
