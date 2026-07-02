@@ -41,3 +41,15 @@ export function optionalAuth(req: AuthRequest, res: Response, next: NextFunction
   }
   next();
 }
+
+/**
+ * Middleware: requires the authenticated user to have role === 'ADMIN'.
+ * Must be used AFTER requireAuth in the middleware chain.
+ */
+export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
+  if (!req.user || req.user.role !== 'ADMIN') {
+    res.status(403).json({ error: 'Admin access required' });
+    return;
+  }
+  next();
+}

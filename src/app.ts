@@ -15,6 +15,8 @@ import { logger } from './config/logger.js';
 import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
 import problemRoutes from './routes/problem.routes.js';
+import adminRoutes from './routes/admin.routes.js';
+import matchRoutes from './routes/match.routes.js';
 
 // ── APP SETUP ────────────────────────────────────────────────────
 const app = express();
@@ -98,6 +100,8 @@ app.get('/api/queue', async (req: Request, res: Response) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/problems', problemRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/matches', matchRoutes);
 
 // ── ROOM ENDPOINTS ───────────────────────────────────────────────
 

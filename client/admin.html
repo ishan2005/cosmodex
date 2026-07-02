@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>COSMODEX — Admin Portal</title>
+<meta name="description" content="COSMODEX Admin Portal — Manage coding battle arena problems and test cases">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+/* ── RESET & BASE ── */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-primary:#0a0e17;--bg-secondary:#111827;--bg-tertiary:#1a2236;--bg-card:#141c2e;
+  --border:#1e2a42;--border-hover:#2d3f63;
+  --text-primary:#e2e8f0;--text-secondary:#8892a8;--text-muted:#5a6478;
+  --accent:#6366f1;--accent-hover:#818cf8;--accent-glow:rgba(99,102,241,.15);
+  --success:#22c55e;--success-bg:rgba(34,197,94,.1);
+  --warning:#f59e0b;--warning-bg:rgba(245,158,11,.1);
+  --danger:#ef4444;--danger-bg:rgba(239,68,68,.1);
+  --easy:#3b82f6;--easy-bg:rgba(59,130,246,.12);
+  --medium:#f59e0b;--medium-bg:rgba(245,158,11,.12);
+  --hard:#ef4444;--hard-bg:rgba(239,68,68,.12);
+  --boss:#a855f7;--boss-bg:rgba(168,85,247,.12);
+  --radius:10px;--radius-lg:14px;
+  --shadow:0 4px 24px rgba(0,0,0,.35);
+  --transition:all .2s ease;
+}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg-primary);color:var(--text-primary);min-height:100vh;line-height:1.5}
+a{color:var(--accent);text-decoration:none}
+
+/* ── LAYOUT ── */
+.app{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+
+/* ── SIDEBAR ── */
+.sidebar{background:var(--bg-secondary);border-right:1px solid var(--border);padding:24px 0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+.sidebar-brand{padding:0 24px 24px;border-bottom:1px solid var(--border);margin-bottom:16px;display:flex;align-items:center;gap:10px}
+.sidebar-brand .logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--accent),#a855f7);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#fff}
+.sidebar-brand h1{font-size:18px;font-weight:800;letter-spacing:-.5px;background:linear-gradient(135deg,var(--accent),#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sidebar-brand .badge{font-size:9px;background:var(--accent-glow);color:var(--accent);padding:2px 8px;border-radius:20px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+
+.nav-section{padding:0 16px;margin-bottom:16px}
+.nav-section .label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);padding:0 8px;margin-bottom:8px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;color:var(--text-secondary);font-size:13px;font-weight:500;cursor:pointer;transition:var(--transition);margin-bottom:2px}
+.nav-item:hover{background:var(--accent-glow);color:var(--text-primary)}
+.nav-item.active{background:var(--accent-glow);color:var(--accent);font-weight:600}
+.nav-item .icon{font-size:16px;width:20px;text-align:center}
+
+.sidebar-footer{margin-top:auto;padding:16px 24px;border-top:1px solid var(--border)}
+.user-info{display:flex;align-items:center;gap:10px}
+.user-avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#a855f7);display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;font-weight:700}
+.user-detail .name{font-size:13px;font-weight:600;color:var(--text-primary)}
+.user-detail .role{font-size:11px;color:var(--accent);font-weight:600;text-transform:uppercase}
+
+/* ── MAIN CONTENT ── */
+.main{padding:28px 32px;overflow-y:auto}
+.page-header{margin-bottom:28px}
+.page-header h2{font-size:24px;font-weight:800;letter-spacing:-.5px;margin-bottom:4px}
+.page-header p{color:var(--text-secondary);font-size:14px}
+
+/* ── STATS GRID ── */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:32px}
+.stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;transition:var(--transition);position:relative;overflow:hidden}
+.stat-card:hover{border-color:var(--border-hover);transform:translateY(-2px);box-shadow:var(--shadow)}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.stat-card.easy::before{background:var(--easy)}
+.stat-card.medium::before{background:var(--medium)}
+.stat-card.hard::before{background:var(--hard)}
+.stat-card.boss::before{background:var(--boss)}
+.stat-card.total::before{background:linear-gradient(90deg,var(--accent),#a855f7)}
+.stat-card .stat-icon{font-size:24px;margin-bottom:8px}
+.stat-card .stat-value{font-size:28px;font-weight:800;letter-spacing:-1px;margin-bottom:2px}
+.stat-card .stat-label{font-size:12px;color:var(--text-muted);font-weight:500;text-transform:uppercase;letter-spacing:.5px}
+
+/* ── TOOLBAR ── */
+.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.search-box{flex:1;min-width:200px;position:relative}
+.search-box input{width:100%;background:var(--bg-card);border:1px solid var(--border);color:var(--text-primary);padding:10px 14px 10px 38px;border-radius:var(--radius);font-size:13px;font-family:inherit;outline:none;transition:var(--transition)}
+.search-box input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.search-box input::placeholder{color:var(--text-muted)}
+.search-box .search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:14px}
+.filter-btn{background:var(--bg-card);border:1px solid var(--border);color:var(--text-secondary);padding:10px 16px;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;transition:var(--transition);font-family:inherit}
+.filter-btn:hover,.filter-btn.active{background:var(--accent-glow);border-color:var(--accent);color:var(--accent)}
+.btn{padding:10px 20px;border:none;border-radius:var(--radius);font-size:13px;font-weight:600;cursor:pointer;transition:var(--transition);font-family:inherit;display:inline-flex;align-items:center;gap:6px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover:not(:disabled){background:var(--accent-hover);box-shadow:0 4px 16px rgba(99,102,241,.3)}
+.btn-danger{background:var(--danger-bg);color:var(--danger);border:1px solid rgba(239,68,68,.2)}
+.btn-danger:hover:not(:disabled){background:rgba(239,68,68,.2)}
+.btn-ghost{background:transparent;color:var(--text-secondary);border:1px solid var(--border)}
+.btn-ghost:hover{background:var(--bg-tertiary);color:var(--text-primary)}
+.btn-sm{padding:6px 12px;font-size:12px}
+
+/* ── TABLE ── */
+.table-container{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead{background:var(--bg-tertiary)}
+th{padding:12px 16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);text-align:left;border-bottom:1px solid var(--border)}
+td{padding:14px 16px;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(99,102,241,.03)}
+.diff-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.diff-badge.EASY{background:var(--easy-bg);color:var(--easy)}
+.diff-badge.MEDIUM{background:var(--medium-bg);color:var(--medium)}
+.diff-badge.HARD{background:var(--hard-bg);color:var(--hard)}
+.diff-badge.BOSS{background:var(--boss-bg);color:var(--boss)}
+.tc-count{background:var(--bg-tertiary);padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;color:var(--text-secondary)}
+.actions{display:flex;gap:6px}
+
+/* ── MODAL ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:500;padding:20px}
+.modal-overlay.show{display:flex}
+.modal{background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-lg);width:100%;max-width:680px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.5)}
+.modal-header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.modal-header h3{font-size:17px;font-weight:700}
+.modal-close{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;padding:4px;transition:var(--transition)}
+.modal-close:hover{color:var(--text-primary)}
+.modal-body{padding:24px}
+.modal-footer{padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px}
+
+/* ── FORM ── */
+.form-group{margin-bottom:18px}
+.form-group label{display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px}
+.form-group input,.form-group textarea,.form-group select{width:100%;background:var(--bg-primary);border:1px solid var(--border);color:var(--text-primary);padding:10px 14px;border-radius:var(--radius);font-size:13px;font-family:inherit;outline:none;transition:var(--transition)}
+.form-group input:focus,.form-group textarea:focus,.form-group select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.form-group textarea{resize:vertical;min-height:100px;line-height:1.6}
+.form-group select{cursor:pointer}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.form-row.triple{grid-template-columns:1fr 1fr 1fr}
+
+/* ── TEST CASES EDITOR ── */
+.tc-editor{margin-top:20px;border-top:1px solid var(--border);padding-top:18px}
+.tc-editor h4{font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.tc-list{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+.tc-item{background:var(--bg-primary);border:1px solid var(--border);border-radius:var(--radius);padding:12px;display:grid;grid-template-columns:1fr 1fr auto auto;gap:10px;align-items:center}
+.tc-item input{background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);padding:7px 10px;border-radius:6px;font-size:12px;font-family:'Consolas','Fira Code',monospace;outline:none}
+.tc-item input:focus{border-color:var(--accent)}
+.tc-item .tc-public{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);cursor:pointer;white-space:nowrap}
+.tc-item .tc-public input[type=checkbox]{accent-color:var(--accent);cursor:pointer}
+.tc-remove{background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;padding:4px;transition:var(--transition)}
+.tc-remove:hover{background:var(--danger-bg);border-radius:4px}
+
+/* ── CONFIRM DIALOG ── */
+.confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:600}
+.confirm-overlay.show{display:flex}
+.confirm-box{background:var(--bg-secondary);border:1px solid var(--danger);border-radius:var(--radius-lg);padding:28px;max-width:400px;text-align:center}
+.confirm-box .icon{font-size:40px;margin-bottom:12px}
+.confirm-box h3{font-size:16px;font-weight:700;margin-bottom:8px}
+.confirm-box p{font-size:13px;color:var(--text-secondary);margin-bottom:20px;line-height:1.6}
+.confirm-box .btns{display:flex;gap:10px;justify-content:center}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);padding:14px 20px;font-size:13px;font-weight:500;z-index:999;opacity:0;transform:translateY(10px);transition:all .3s ease;display:flex;align-items:center;gap:8px;box-shadow:var(--shadow);max-width:400px}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.success{border-color:var(--success);color:var(--success)}
+.toast.error{border-color:var(--danger);color:var(--danger)}
+
+/* ── EMPTY STATE ── */
+.empty-state{text-align:center;padding:48px 20px;color:var(--text-muted)}
+.empty-state .icon{font-size:48px;margin-bottom:12px;opacity:.5}
+.empty-state h3{font-size:16px;font-weight:600;color:var(--text-secondary);margin-bottom:6px}
+.empty-state p{font-size:13px}
+
+/* ── SECTION TABS (for views) ── */
+.section{display:none}
+.section.active{display:block}
+
+/* ── USER TABLE ── */
+.role-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.role-badge.ADMIN{background:var(--accent-glow);color:var(--accent)}
+.role-badge.USER{background:var(--bg-tertiary);color:var(--text-muted)}
+
+/* ── ANIMATIONS ── */
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.stat-card,.table-container{animation:fadeIn .3s ease forwards}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--border-hover)}
+
+/* ── RESPONSIVE ── */
+@media(max-width:768px){
+  .app{grid-template-columns:1fr}
+  .sidebar{display:none}
+  .main{padding:16px}
+  .form-row{grid-template-columns:1fr}
+  .tc-item{grid-template-columns:1fr;gap:6px}
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="logo-icon">⚔</div>
+      <div>
+        <h1>COSMODEX</h1>
+        <span class="badge">Admin Portal</span>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="label">Management</div>
+      <div class="nav-item active" onclick="switchSection('problems')" id="nav-problems">
+        <span class="icon">📝</span> Problems
+      </div>
+      <div class="nav-item" onclick="switchSection('users')" id="nav-users">
+        <span class="icon">👥</span> Users
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="label">Quick Links</div>
+      <div class="nav-item" onclick="window.location.href='/arena.html'">
+        <span class="icon">⚔</span> Battle Arena
+      </div>
+      <div class="nav-item" onclick="window.location.href='/'">
+        <span class="icon">🏠</span> Homepage
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="sidebar-avatar">A</div>
+        <div class="user-detail">
+          <div class="name" id="sidebar-name">Admin</div>
+          <div class="role">ADMIN</div>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:12px" onclick="logout()">🚪 Logout</button>
+    </div>
+  </aside>
+
+  <!-- ── MAIN CONTENT ── -->
+  <main class="main">
+
+    <!-- ═══ PROBLEMS SECTION ═══ -->
+    <div class="section active" id="section-problems">
+      <div class="page-header">
+        <h2 id="page-title">Problem Management</h2>
+        <p id="page-subtitle">Add, edit, and remove coding challenges for the Battle Arena</p>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid" id="stats-grid"></div>
+
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="search-input" placeholder="Search problems by title…" oninput="filterProblems()">
+        </div>
+        <button class="filter-btn active" onclick="filterByDifficulty(this,'ALL')">All</button>
+        <button class="filter-btn" onclick="filterByDifficulty(this,'EASY')">Easy</button>
+        <button class="filter-btn" onclick="filterByDifficulty(this,'MEDIUM')">Medium</button>
+        <button class="filter-btn" onclick="filterByDifficulty(this,'HARD')">Hard</button>
+        <button class="filter-btn" onclick="filterByDifficulty(this,'BOSS')">Boss</button>
+        <button class="btn btn-primary" onclick="openAddModal()">+ Add Problem</button>
+      </div>
+
+      <!-- Table -->
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Difficulty</th>
+              <th>Points</th>
+              <th>Time Limit</th>
+              <th>Test Cases</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="problems-tbody">
+            <tr><td colspan="6" class="empty-state"><div class="icon">📝</div><h3>Loading…</h3></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ USERS SECTION ═══ -->
+    <div class="section" id="section-users">
+      <div class="page-header">
+        <h2>User Management</h2>
+        <p>Manage team member roles — promote users to Admin to let them manage questions</p>
+      </div>
+
+      <div class="toolbar">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="user-search" placeholder="Search users…" oninput="filterUsers()">
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Email</th>
+              <th>ELO</th>
+              <th>Role</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody">
+            <tr><td colspan="5" class="empty-state"><div class="icon">👥</div><h3>Loading…</h3></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ── ADD/EDIT PROBLEM MODAL ── -->
+<div class="modal-overlay" id="problem-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Add New Problem</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-problem-id">
+
+      <div class="form-group">
+        <label>Title</label>
+        <input type="text" id="f-title" placeholder="e.g. Two Sum Indices">
+      </div>
+
+      <div class="form-group">
+        <label>Description</label>
+        <textarea id="f-description" placeholder="Describe the problem, input/output format, constraints…"></textarea>
+      </div>
+
+      <div class="form-row triple">
+        <div class="form-group">
+          <label>Difficulty</label>
+          <select id="f-difficulty">
+            <option value="EASY">Easy</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="HARD">Hard</option>
+            <option value="BOSS">Boss</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Base Points</label>
+          <input type="number" id="f-points" value="100" min="1">
+        </div>
+        <div class="form-group">
+          <label>Time Limit (sec)</label>
+          <input type="number" id="f-time" value="2" min="1" max="30">
+        </div>
+      </div>
+
+      <!-- Test Cases -->
+      <div class="tc-editor">
+        <h4>🧪 Test Cases <button class="btn btn-ghost btn-sm" onclick="addTestCaseRow()">+ Add</button></h4>
+        <div class="tc-list" id="tc-list"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="modal-save-btn" onclick="saveProblem()">Create Problem</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── DELETE CONFIRM ── -->
+<div class="confirm-overlay" id="confirm-overlay">
+  <div class="confirm-box">
+    <div class="icon">⚠️</div>
+    <h3 id="confirm-title">Delete Problem?</h3>
+    <p id="confirm-text">This will permanently delete the problem and all its test cases. This action cannot be undone.</p>
+    <div class="btns">
+      <button class="btn btn-ghost" onclick="closeConfirm()">Cancel</button>
+      <button class="btn btn-danger" id="confirm-action-btn" onclick="">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── TOAST ── -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── AUTH ──────────────────────────────────────────────────────────
+const token = localStorage.getItem('cosmodex_token') || '';
+const user = JSON.parse(localStorage.getItem('cosmodex_user') || 'null');
+
+if (!token || !user) {
+  window.location.replace('/login.html');
+}
+
+// Check if user is admin
+if (user && user.role !== 'ADMIN') {
+  document.body.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px;font-family:Inter,sans-serif;color:#e2e8f0">
+      <div style="font-size:64px">🔒</div>
+      <h2 style="font-size:24px;font-weight:800">Access Denied</h2>
+      <p style="color:#8892a8;font-size:14px">You need Admin privileges to access this page.</p>
+      <button onclick="window.location.href='/arena.html'" style="background:#6366f1;color:#fff;border:none;padding:10px 24px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Go to Arena</button>
+    </div>`;
+}
+
+document.getElementById('sidebar-avatar').textContent = user?.username?.[0]?.toUpperCase() || 'A';
+document.getElementById('sidebar-name').textContent = user?.username || 'Admin';
+
+const API = '/api/admin';
+const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+
+// ── STATE ────────────────────────────────────────────────────────
+let allProblems = [];
+let allUsers = [];
+let currentFilter = 'ALL';
+let editingId = null;
+
+// ── TOAST ────────────────────────────────────────────────────────
+function toast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.textContent = (type === 'success' ? '✅ ' : '❌ ') + msg;
+  el.className = 'toast show ' + type;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = 'toast', 3500);
+}
+
+// ── NAV ──────────────────────────────────────────────────────────
+function switchSection(name) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('section-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+  if (name === 'users') loadUsers();
+}
+
+function logout() {
+  localStorage.removeItem('cosmodex_token');
+  localStorage.removeItem('cosmodex_user');
+  window.location.replace('/login.html');
+}
+
+// ── LOAD STATS ───────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const stats = await fetch(API + '/stats', { headers }).then(r => r.json());
+    document.getElementById('stats-grid').innerHTML = `
+      <div class="stat-card total">
+        <div class="stat-icon">📊</div>
+        <div class="stat-value">${stats.problems.total}</div>
+        <div class="stat-label">Total Problems</div>
+      </div>
+      <div class="stat-card easy">
+        <div class="stat-icon">🟢</div>
+        <div class="stat-value">${stats.problems.easy}</div>
+        <div class="stat-label">Easy</div>
+      </div>
+      <div class="stat-card medium">
+        <div class="stat-icon">🟡</div>
+        <div class="stat-value">${stats.problems.medium}</div>
+        <div class="stat-label">Medium</div>
+      </div>
+      <div class="stat-card hard">
+        <div class="stat-icon">🔴</div>
+        <div class="stat-value">${stats.problems.hard}</div>
+        <div class="stat-label">Hard</div>
+      </div>
+      <div class="stat-card boss">
+        <div class="stat-icon">👾</div>
+        <div class="stat-value">${stats.problems.boss}</div>
+        <div class="stat-label">Boss</div>
+      </div>
+    `;
+  } catch (e) { console.error('Stats load failed', e); }
+}
+
+// ── LOAD PROBLEMS ────────────────────────────────────────────────
+async function loadProblems() {
+  try {
+    const res = await fetch(API + '/problems', { headers });
+    if (res.status === 403) {
+      toast('Admin access required', 'error');
+      return;
+    }
+    allProblems = await res.json();
+    renderProblems();
+  } catch (e) {
+    toast('Failed to load problems', 'error');
+  }
+}
+
+function renderProblems() {
+  const tbody = document.getElementById('problems-tbody');
+  const search = document.getElementById('search-input').value.toLowerCase();
+  let filtered = allProblems;
+
+  if (currentFilter !== 'ALL') filtered = filtered.filter(p => p.difficulty === currentFilter);
+  if (search) filtered = filtered.filter(p => p.title.toLowerCase().includes(search));
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="icon">📝</div><h3>No problems found</h3><p>Try changing your filters or add a new problem</p></div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(p => `
+    <tr>
+      <td><strong>${escHtml(p.title)}</strong></td>
+      <td><span class="diff-badge ${p.difficulty}">${p.difficulty}</span></td>
+      <td>${p.basePoints} pts</td>
+      <td>${p.timeLimitSec}s</td>
+      <td><span class="tc-count">${p.testCases?.length || 0} cases</span></td>
+      <td>
+        <div class="actions">
+          <button class="btn btn-ghost btn-sm" onclick='editProblem("${p.id}")'>✏️ Edit</button>
+          <button class="btn btn-danger btn-sm" onclick='confirmDelete("${p.id}","${escAttr(p.title)}")'>🗑️</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function filterByDifficulty(el, diff) {
+  currentFilter = diff;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderProblems();
+}
+
+function filterProblems() { renderProblems(); }
+
+// ── ADD / EDIT MODAL ─────────────────────────────────────────────
+function openAddModal() {
+  editingId = null;
+  document.getElementById('modal-title').textContent = 'Add New Problem';
+  document.getElementById('modal-save-btn').textContent = 'Create Problem';
+  document.getElementById('f-title').value = '';
+  document.getElementById('f-description').value = '';
+  document.getElementById('f-difficulty').value = 'EASY';
+  document.getElementById('f-points').value = '100';
+  document.getElementById('f-time').value = '2';
+  document.getElementById('tc-list').innerHTML = '';
+  addTestCaseRow(); // start with one empty row
+  addTestCaseRow();
+  document.getElementById('problem-modal').classList.add('show');
+}
+
+function editProblem(id) {
+  const p = allProblems.find(x => x.id === id);
+  if (!p) return;
+  editingId = id;
+  document.getElementById('modal-title').textContent = 'Edit Problem';
+  document.getElementById('modal-save-btn').textContent = 'Save Changes';
+  document.getElementById('f-title').value = p.title;
+  document.getElementById('f-description').value = p.description;
+  document.getElementById('f-difficulty').value = p.difficulty;
+  document.getElementById('f-points').value = p.basePoints;
+  document.getElementById('f-time').value = p.timeLimitSec;
+
+  const tcList = document.getElementById('tc-list');
+  tcList.innerHTML = '';
+  (p.testCases || []).forEach(tc => addTestCaseRow(tc.input, tc.expected, tc.isPublic, tc.id));
+
+  document.getElementById('problem-modal').classList.add('show');
+}
+
+function addTestCaseRow(input = '', expected = '', isPublic = false, tcId = '') {
+  const div = document.createElement('div');
+  div.className = 'tc-item';
+  div.dataset.tcId = tcId || '';
+  div.innerHTML = `
+    <input type="text" placeholder="Input" value="${escAttr(input)}">
+    <input type="text" placeholder="Expected output" value="${escAttr(expected)}">
+    <label class="tc-public"><input type="checkbox" ${isPublic ? 'checked' : ''}> Public</label>
+    <button class="tc-remove" onclick="removeTestCaseRow(this)" title="Remove">✕</button>
+  `;
+  document.getElementById('tc-list').appendChild(div);
+}
+
+function removeTestCaseRow(btn) {
+  const item = btn.closest('.tc-item');
+  const tcId = item.dataset.tcId;
+  // If it has a real DB id (editing mode), delete from server too
+  if (tcId) {
+    fetch(API + '/test-cases/' + tcId, { method: 'DELETE', headers })
+      .then(() => toast('Test case removed'))
+      .catch(() => toast('Failed to remove test case', 'error'));
+  }
+  item.remove();
+}
+
+function closeModal() {
+  document.getElementById('problem-modal').classList.remove('show');
+}
+
+async function saveProblem() {
+  const title = document.getElementById('f-title').value.trim();
+  const description = document.getElementById('f-description').value.trim();
+  const difficulty = document.getElementById('f-difficulty').value;
+  const basePoints = parseInt(document.getElementById('f-points').value) || 100;
+  const timeLimitSec = parseInt(document.getElementById('f-time').value) || 2;
+
+  if (!title || !description) {
+    toast('Title and description are required', 'error');
+    return;
+  }
+
+  // Gather test cases
+  const tcRows = document.querySelectorAll('#tc-list .tc-item');
+  const testCases = [];
+  tcRows.forEach(row => {
+    const inputs = row.querySelectorAll('input[type=text]');
+    const pub = row.querySelector('input[type=checkbox]');
+    const inp = inputs[0]?.value?.trim();
+    const exp = inputs[1]?.value?.trim();
+    if (inp !== undefined && exp !== undefined && (inp || exp)) {
+      testCases.push({ input: inp, expected: exp, isPublic: pub?.checked || false });
+    }
+  });
+
+  const saveBtn = document.getElementById('modal-save-btn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving…';
+
+  try {
+    if (editingId) {
+      // UPDATE existing problem
+      await fetch(API + '/problems/' + editingId, {
+        method: 'PUT', headers,
+        body: JSON.stringify({ title, description, difficulty, basePoints, timeLimitSec }),
+      });
+
+      // Add any NEW test cases (rows without tcId)
+      for (const row of tcRows) {
+        if (!row.dataset.tcId) {
+          const inputs = row.querySelectorAll('input[type=text]');
+          const pub = row.querySelector('input[type=checkbox]');
+          const inp = inputs[0]?.value?.trim();
+          const exp = inputs[1]?.value?.trim();
+          if (inp || exp) {
+            await fetch(API + '/problems/' + editingId + '/test-cases', {
+              method: 'POST', headers,
+              body: JSON.stringify({ input: inp || '', expected: exp || '', isPublic: pub?.checked || false }),
+            });
+          }
+        }
+      }
+
+      toast('Problem updated successfully');
+    } else {
+      // CREATE new problem
+      const res = await fetch(API + '/problems', {
+        method: 'POST', headers,
+        body: JSON.stringify({ title, description, difficulty, basePoints, timeLimitSec, testCases }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to create');
+      }
+      toast('Problem created successfully! It will appear in future matches.');
+    }
+
+    closeModal();
+    await Promise.all([loadProblems(), loadStats()]);
+  } catch (e) {
+    toast(e.message || 'Save failed', 'error');
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = editingId ? 'Save Changes' : 'Create Problem';
+  }
+}
+
+// ── DELETE CONFIRM ───────────────────────────────────────────────
+let pendingDeleteId = null;
+
+function confirmDelete(id, title) {
+  pendingDeleteId = id;
+  document.getElementById('confirm-title').textContent = `Delete "${title}"?`;
+  document.getElementById('confirm-text').textContent = 'This will permanently delete the problem, all its test cases, and related submissions. This cannot be undone.';
+  document.getElementById('confirm-action-btn').onclick = deleteProblem;
+  document.getElementById('confirm-overlay').classList.add('show');
+}
+
+function closeConfirm() {
+  document.getElementById('confirm-overlay').classList.remove('show');
+  pendingDeleteId = null;
+}
+
+async function deleteProblem() {
+  if (!pendingDeleteId) return;
+  try {
+    const res = await fetch(API + '/problems/' + pendingDeleteId, { method: 'DELETE', headers });
+    if (!res.ok) throw new Error('Delete failed');
+    toast('Problem deleted');
+    closeConfirm();
+    await Promise.all([loadProblems(), loadStats()]);
+  } catch (e) {
+    toast('Failed to delete problem', 'error');
+  }
+}
+
+// ── USERS ────────────────────────────────────────────────────────
+async function loadUsers() {
+  try {
+    allUsers = await fetch(API + '/users', { headers }).then(r => r.json());
+    renderUsers();
+  } catch (e) {
+    toast('Failed to load users', 'error');
+  }
+}
+
+function renderUsers() {
+  const tbody = document.getElementById('users-tbody');
+  const search = (document.getElementById('user-search')?.value || '').toLowerCase();
+  let filtered = allUsers;
+  if (search) filtered = filtered.filter(u => u.username.toLowerCase().includes(search) || u.email.toLowerCase().includes(search));
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="icon">👥</div><h3>No users found</h3></div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(u => `
+    <tr>
+      <td><strong>${escHtml(u.username)}</strong></td>
+      <td style="color:var(--text-muted)">${escHtml(u.email)}</td>
+      <td>${u.eloRating}</td>
+      <td><span class="role-badge ${u.role}">${u.role}</span></td>
+      <td>
+        ${u.id === user.id ? '<span style="color:var(--text-muted);font-size:12px">You</span>' :
+          u.role === 'ADMIN'
+            ? `<button class="btn btn-ghost btn-sm" onclick='toggleRole("${u.id}","USER")'>Demote</button>`
+            : `<button class="btn btn-primary btn-sm" onclick='toggleRole("${u.id}","ADMIN")'>Promote</button>`
+        }
+      </td>
+    </tr>
+  `).join('');
+}
+
+function filterUsers() { renderUsers(); }
+
+async function toggleRole(userId, newRole) {
+  try {
+    await fetch(API + '/users/' + userId + '/role', {
+      method: 'PATCH', headers,
+      body: JSON.stringify({ role: newRole }),
+    });
+    toast(`User ${newRole === 'ADMIN' ? 'promoted to Admin' : 'demoted to User'}`);
+    await loadUsers();
+  } catch (e) {
+    toast('Failed to change role', 'error');
+  }
+}
+
+// ── UTILS ────────────────────────────────────────────────────────
+function escHtml(str) { const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
+function escAttr(str) { return String(str || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+// ── INIT ─────────────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  await Promise.all([loadStats(), loadProblems()]);
+});
+</script>
+</body>
+</html>

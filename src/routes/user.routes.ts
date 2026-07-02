@@ -6,6 +6,56 @@ import { logger } from '../config/logger.js';
 const router = Router();
 
 /**
+ * GET /api/users/me
+ * Returns the authenticated user's full profile including stats.
+ * Requires Bearer token.
+ */
+router.get('/me', requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.user!.userId as string;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      eloRating: true,
+      role: true,
+      createdAt: true,
+    },
+  });
+
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const [wins, totalMatches, totalSubmissions, acceptedSubmissions] = await Promise.all([
+    prisma.match.count({ where: { winnerId: userId, status: 'COMPLETED' } }),
+    prisma.match.count({
+      where: { OR: [{ player1Id: userId }, { player2Id: userId }] },
+    }),
+    prisma.submission.count({ where: { userId } }),
+    prisma.submission.count({ where: { userId, status: 'ACCEPTED' } }),
+  ]);
+
+  const losses = totalMatches > 0 ? totalMatches - wins : 0;
+  const winRate = totalMatches > 0 ? ((wins / totalMatches) * 100).toFixed(1) : '0.0';
+  const acceptanceRate =
+    totalSubmissions > 0
+      ? ((acceptedSubmissions / totalSubmissions) * 100).toFixed(1)
+      : '0.0';
+
+  res.json({
+    ...user,
+    wins,
+    losses,
+    totalMatches,
+    totalSubmissions,
+    acceptedSubmissions,
+    winRate: `${winRate}%`,
+    acceptanceRate: `${acceptanceRate}%`,
+  });
+});
+
+/**
  * GET /api/users
  * Public leaderboard — top 50 players sorted by ELO descending.
  */

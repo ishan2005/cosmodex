@@ -59,7 +59,7 @@ export function registerMatchmakingHandlers(io: Server, socket: Socket) {
       ]);
 
       // Fetch partitioned problems and select randomly for the 6-stage match:
-      // Stage 1-2: EASY | Stage 3-4: MEDIUM | Stage 5: HARD | Stage 6: BOSS
+      // Stage 1-2: EASY | Stage 3: MEDIUM | Stage 4-5: HARD | Stage 6: BOSS
       const [easyProblems, mediumProblems, hardProblems, bossProblems] = await Promise.all([
         prisma.problem.findMany({ where: { difficulty: 'EASY' }, select: { id: true } }),
         prisma.problem.findMany({ where: { difficulty: 'MEDIUM' }, select: { id: true } }),
@@ -72,15 +72,15 @@ export function registerMatchmakingHandlers(io: Server, socket: Socket) {
         return shuffled.slice(0, n).map(p => p.id);
       }
 
-      const stage1And2 = pickRandomUnique(easyProblems, 2);
-      const stage3And4 = pickRandomUnique(mediumProblems, 2);
-      const stage5 = pickRandomUnique(hardProblems, 1);
-      const stage6 = pickRandomUnique(bossProblems, 1);
+      const stage1And2 = pickRandomUnique(easyProblems, 2);   // 2 EASY
+      const stage3     = pickRandomUnique(mediumProblems, 1);  // 1 MEDIUM
+      const stage4And5 = pickRandomUnique(hardProblems, 2);    // 2 HARD
+      const stage6     = pickRandomUnique(bossProblems, 1);    // 1 BOSS
 
       const problemIds = [
         ...stage1And2,
-        ...stage3And4,
-        ...stage5,
+        ...stage3,
+        ...stage4And5,
         ...stage6
       ];
 

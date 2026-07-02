@@ -109,6 +109,10 @@ body{font-family:'Segoe UI',monospace,sans-serif;background:#0d1117;color:#c9d1d
 .user-chip .uc-elo{font-size:11px;color:#d29922;font-weight:600}
 .btn-logout{background:none;border:1px solid #30363d;color:#484f58;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:monospace;transition:all .15s;margin-left:4px}
 .btn-logout:hover{border-color:#f85149;color:#f85149}
+/* ── ADMIN BUTTON ── */
+.btn-admin{display:none;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;border:none;padding:8px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:monospace;transition:all .2s;margin-top:8px;gap:6px;align-items:center}
+.btn-admin:hover{transform:translateY(-2px);box-shadow:0 4px 20px rgba(99,102,241,.4)}
+.btn-admin.show{display:inline-flex}
 /* ── LOBBY CARD ── */
 .lobby-card{background:#161b22;border:1px solid #30363d;border-radius:16px;padding:32px 40px;text-align:center;min-width:320px;box-shadow:0 8px 32px rgba(0,0,0,.4)}
 .lobby-avatar{font-size:56px;margin-bottom:12px;animation:float-avatar 3s ease-in-out infinite}
@@ -189,6 +193,7 @@ textarea#stdin-input::placeholder{color:#484f58}
     <button class="queue-btn" id="queue-btn" onclick="queueUp()">🔍 Find Match</button>
     <div class="queue-status" id="queue-status"></div>
   </div>
+  <button class="btn-admin" id="admin-btn" onclick="window.location.href='/admin.html'">🛡️ Admin Panel</button>
   <button class="btn-logout" onclick="logout()" style="margin-top:16px">🚪 Logout</button>
 </div>
 
@@ -381,6 +386,11 @@ document.getElementById('lobby-elo').textContent      = `ELO ${myElo}`;
 document.getElementById('uc-avatar').textContent = _av;
 document.getElementById('uc-name').textContent   = myUsername;
 document.getElementById('uc-elo').textContent    = `ELO ${myElo}`;
+
+// Show Admin Panel button if user is admin
+if (_storedUser?.role === 'ADMIN') {
+  document.getElementById('admin-btn').classList.add('show');
+}
 
 function logout() {
   localStorage.removeItem('cosmodex_token');
