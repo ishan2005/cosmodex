@@ -150,201 +150,201 @@ export function registerMatchHandlers(io: Server, socket: Socket) {
       roomSubmitLocks.set(roomId, prevLock.then(() => myLock));
 
       try {
-      await prevLock; // wait for any previous submission on this room to finish
+        await prevLock; // wait for any previous submission on this room to finish
 
-      const state = await RedisService.getRoomState(roomId);
-      if (!state) {
-        socket.emit('error', { message: 'Room not found' });
-        return;
-      }
-
-      const player = state.players[userId];
-      if (!player) {
-        socket.emit('error', { message: 'You are not a participant of this room' });
-        return;
-      }
-
-      if (state.status !== 'ACTIVE') {
-        socket.emit('error', { message: 'Match is not active' });
-        return;
-      }
-
-      if (player.status === 'ELIMINATED' || player.status === 'DONE') {
-        socket.emit('error', { message: `Cannot submit — you are ${player.status}` });
-        return;
-      }
-
-      logger.info(`[Handler] submit_code | room=${roomId} user=${userId} problem=${problemId} lang=${language}`);
-
-      // Track submission count
-      player.submissionsCount++;
-      await RedisService.saveRoomState(roomId, state);
-
-      // Run the code through the executor (always catch so client always gets a result)
-      const executor = ExecutorService.getExecutor();
-      let execResult;
-      try {
-        execResult = await executor.execute(code, language, problemId);
-      } catch (execErr) {
-        const errMsg = execErr instanceof Error ? execErr.message : String(execErr);
-        logger.error(`[Handler] Execution failed for user ${userId}: ${errMsg}`);
-        socket.emit('submission_result', {
-          status: 'RUNTIME_ERROR',
-          passedCount: 0,
-          totalCount: 0,
-          testCases: [],
-          pointsAwarded: 0,
-          livesRemaining: player.lives,
-          error: `Execution service error: ${errMsg.substring(0, 200)}`,
-        });
-        return;
-      }
-
-      logger.info(
-        `[Handler] Execution result: ${execResult.status} (${execResult.passedCount}/${execResult.totalCount})`
-      );
-
-      // Persist submission to DB (async — don't await to avoid blocking real-time response)
-      prisma.submission
-        .create({
-          data: {
-            userId,
-            problemId,
-            code,
-            language,
-            status: execResult.status,
-            passedCount: execResult.passedCount,
-            totalCount: execResult.totalCount,
-            matchId: state.matchId,
-          },
-        })
-        .then(() => logger.debug(`[Handler] Submission saved to DB for user ${userId}`))
-        .catch((err: Error) => logger.error(`[Handler] Failed to save submission: ${err.message}`));
-
-      // ── ACCEPTED ──────────────────────────────────────────────
-      if (execResult.status === 'ACCEPTED') {
-        // BUG 3 FIX: use player's personal stage, not the room-level stage.
-        // Players can be on different stages (STAY mechanic), so room stage != player stage.
-        const playerStage = player.currentStage;
-        const points = playerStage === 6 ? 300 : playerStage <= 2 ? 100 : 150;
-
-        const { roomState, firstFinisher } = await MatchService.handleCorrectSubmission(
-          roomId,
-          userId,
-          points
-        );
-
-        socket.emit('submission_result', {
-          status: 'ACCEPTED',
-          passedCount: execResult.passedCount,
-          totalCount: execResult.totalCount,
-          testCases: execResult.testCases.filter((t) => t.isPublic),
-          pointsAwarded: points,
-          livesRemaining: roomState.players[userId]?.lives ?? player.lives,
-        });
-
-        io.to(roomId).emit('room_state_update', roomState);
-
-        if (roomState.status === 'COMPLETED') {
-          io.to(roomId).emit('match_ended', { winnerId: userId, reason: 'correct_submission' });
+        const state = await RedisService.getRoomState(roomId);
+        if (!state) {
+          socket.emit('error', { message: 'Room not found' });
           return;
         }
 
-        // Sprint phase: if first finisher, trigger decision window on OPPONENT only
-        if (firstFinisher && roomState.currentStage <= 5) {
-          const opponentId = roomState.playerIds.find((id) => id !== userId)!;
-
-          // ── Tell the OPPONENT they need to decide (SKIP or STAY) ──
-          // socket.to() sends to everyone in the room EXCEPT the sender
-          socket.to(roomId).emit('opponent_completed_stage', {
-            opponentId: userId,
-            decisionTimeRemaining: 15,
-          });
-
-          // ── Tell the WINNER to wait while opponent decides ────────
-          socket.emit('waiting_for_opponent', {
-            message: 'Opponent is deciding whether to skip or stay…',
-            decisionTimeRemaining: 15,
-          });
-
-          setDecisionTimer(roomId, opponentId, io);
+        const player = state.players[userId];
+        if (!player) {
+          socket.emit('error', { message: 'You are not a participant of this room' });
+          return;
         }
-        return;
-      }
 
-      // ── WRONG / TLE / RUNTIME ERROR ───────────────────────────
-      let updatedState = state;
+        if (state.status !== 'ACTIVE') {
+          socket.emit('error', { message: 'Match is not active' });
+          return;
+        }
 
-      if (player.status === 'STAYING') {
-        // Player chose STAY → wrong answer costs 1 global life
-        updatedState = await MatchService.handleWrongSubmissionInStay(roomId, userId);
-      } else if (player.currentStage === 6) {
-        // Boss Battle: wrong answer costs 1 life
-        player.lives = Math.max(0, player.lives - 1);
-        logger.info(`[Handler] Boss Battle wrong answer — ${userId} lives: ${player.lives}`);
+        if (player.status === 'ELIMINATED' || player.status === 'DONE') {
+          socket.emit('error', { message: `Cannot submit — you are ${player.status}` });
+          return;
+        }
 
-        if (player.lives <= 0) {
-          player.status = 'ELIMINATED';
+        logger.info(`[Handler] submit_code | room=${roomId} user=${userId} problem=${problemId} lang=${language}`);
 
-          // BUG 4 FIX: check who is still alive — emit the surviving opponent as the winner.
-          // Previously always emitted winnerId: null even if only one player was eliminated.
-          const survivingId = state.playerIds.find(
-            (id) => id !== userId && state.players[id]?.status !== 'ELIMINATED'
+        // Track submission count
+        player.submissionsCount++;
+        await RedisService.saveRoomState(roomId, state);
+
+        // Run the code through the executor (always catch so client always gets a result)
+        const executor = ExecutorService.getExecutor();
+        let execResult;
+        try {
+          execResult = await executor.execute(code, language, problemId);
+        } catch (execErr) {
+          const errMsg = execErr instanceof Error ? execErr.message : String(execErr);
+          logger.error(`[Handler] Execution failed for user ${userId}: ${errMsg}`);
+          socket.emit('submission_result', {
+            status: 'RUNTIME_ERROR',
+            passedCount: 0,
+            totalCount: 0,
+            testCases: [],
+            pointsAwarded: 0,
+            livesRemaining: player.lives,
+            error: `Execution service error: ${errMsg.substring(0, 200)}`,
+          });
+          return;
+        }
+
+        logger.info(
+          `[Handler] Execution result: ${execResult.status} (${execResult.passedCount}/${execResult.totalCount})`
+        );
+
+        // Persist submission to DB (async — don't await to avoid blocking real-time response)
+        prisma.submission
+          .create({
+            data: {
+              userId,
+              problemId,
+              code,
+              language,
+              status: execResult.status,
+              passedCount: execResult.passedCount,
+              totalCount: execResult.totalCount,
+              matchId: state.matchId,
+            },
+          })
+          .then(() => logger.debug(`[Handler] Submission saved to DB for user ${userId}`))
+          .catch((err: Error) => logger.error(`[Handler] Failed to save submission: ${err.message}`));
+
+        // ── ACCEPTED ──────────────────────────────────────────────
+        if (execResult.status === 'ACCEPTED') {
+          // BUG 3 FIX: use player's personal stage, not the room-level stage.
+          // Players can be on different stages (STAY mechanic), so room stage != player stage.
+          const playerStage = player.currentStage;
+          const points = playerStage === 6 ? 300 : playerStage <= 2 ? 100 : 150;
+
+          const { roomState, firstFinisher } = await MatchService.handleCorrectSubmission(
+            roomId,
+            userId,
+            points
           );
 
-          if (survivingId) {
-            // One player eliminated, opponent still alive → opponent wins
-            state.status = 'COMPLETED';
-            await RedisService.saveRoomState(roomId, state);
-            await MatchService.endMatch(roomId, survivingId);
+          socket.emit('submission_result', {
+            status: 'ACCEPTED',
+            passedCount: execResult.passedCount,
+            totalCount: execResult.totalCount,
+            testCases: execResult.testCases.filter((t) => t.isPublic),
+            pointsAwarded: points,
+            livesRemaining: roomState.players[userId]?.lives ?? player.lives,
+          });
 
-            socket.emit('submission_result', {
-              status: execResult.status,
-              passedCount: execResult.passedCount,
-              totalCount: execResult.totalCount,
-              testCases: execResult.testCases.filter((t) => t.isPublic),
-              pointsAwarded: 0,
-              livesRemaining: 0,
-            });
+          io.to(roomId).emit('room_state_update', roomState);
 
-            io.to(roomId).emit('room_state_update', state);
-            io.to(roomId).emit('match_ended', { winnerId: survivingId, reason: 'opponent_eliminated' });
-            return;
-          } else {
-            // Both players are now eliminated → draw
-            state.status = 'COMPLETED';
-            await RedisService.saveRoomState(roomId, state);
-            await MatchService.endMatch(roomId, null);
-
-            socket.emit('submission_result', {
-              status: execResult.status,
-              passedCount: execResult.passedCount,
-              totalCount: execResult.totalCount,
-              testCases: execResult.testCases.filter((t) => t.isPublic),
-              pointsAwarded: 0,
-              livesRemaining: 0,
-            });
-
-            io.to(roomId).emit('room_state_update', state);
-            io.to(roomId).emit('match_ended', { winnerId: null, reason: 'both_eliminated' });
+          if (roomState.status === 'COMPLETED') {
+            io.to(roomId).emit('match_ended', { winnerId: userId, reason: 'correct_submission' });
             return;
           }
-        } else {
-          await RedisService.saveRoomState(roomId, state);
+
+          // Sprint phase: if first finisher, trigger decision window on OPPONENT only
+          if (firstFinisher && roomState.currentStage <= 5) {
+            const opponentId = roomState.playerIds.find((id) => id !== userId)!;
+
+            // ── Tell the OPPONENT they need to decide (SKIP or STAY) ──
+            // socket.to() sends to everyone in the room EXCEPT the sender
+            socket.to(roomId).emit('opponent_completed_stage', {
+              opponentId: userId,
+              decisionTimeRemaining: 15,
+            });
+
+            // ── Tell the WINNER to wait while opponent decides ────────
+            socket.emit('waiting_for_opponent', {
+              message: 'Opponent is deciding whether to skip or stay…',
+              decisionTimeRemaining: 15,
+            });
+
+            setDecisionTimer(roomId, opponentId, io);
+          }
+          return;
         }
-        updatedState = state;
-      }
 
-      socket.emit('submission_result', {
-        status: execResult.status,
-        passedCount: execResult.passedCount,
-        totalCount: execResult.totalCount,
-        testCases: execResult.testCases.filter((t) => t.isPublic),
-        pointsAwarded: 0,
-        livesRemaining: updatedState.players[userId]?.lives ?? player.lives,
-      });
+        // ── WRONG / TLE / RUNTIME ERROR ───────────────────────────
+        let updatedState = state;
 
-      io.to(roomId).emit('room_state_update', updatedState);
+        if (player.status === 'STAYING') {
+          // Player chose STAY → wrong answer costs 1 global life
+          updatedState = await MatchService.handleWrongSubmissionInStay(roomId, userId);
+        } else if (player.currentStage === 6) {
+          // Boss Battle: wrong answer costs 1 life
+          player.lives = Math.max(0, player.lives - 1);
+          logger.info(`[Handler] Boss Battle wrong answer — ${userId} lives: ${player.lives}`);
+
+          if (player.lives <= 0) {
+            player.status = 'ELIMINATED';
+
+            // BUG 4 FIX: check who is still alive — emit the surviving opponent as the winner.
+            // Previously always emitted winnerId: null even if only one player was eliminated.
+            const survivingId = state.playerIds.find(
+              (id) => id !== userId && state.players[id]?.status !== 'ELIMINATED'
+            );
+
+            if (survivingId) {
+              // One player eliminated, opponent still alive → opponent wins
+              state.status = 'COMPLETED';
+              await RedisService.saveRoomState(roomId, state);
+              await MatchService.endMatch(roomId, survivingId);
+
+              socket.emit('submission_result', {
+                status: execResult.status,
+                passedCount: execResult.passedCount,
+                totalCount: execResult.totalCount,
+                testCases: execResult.testCases.filter((t) => t.isPublic),
+                pointsAwarded: 0,
+                livesRemaining: 0,
+              });
+
+              io.to(roomId).emit('room_state_update', state);
+              io.to(roomId).emit('match_ended', { winnerId: survivingId, reason: 'opponent_eliminated' });
+              return;
+            } else {
+              // Both players are now eliminated → draw
+              state.status = 'COMPLETED';
+              await RedisService.saveRoomState(roomId, state);
+              await MatchService.endMatch(roomId, null);
+
+              socket.emit('submission_result', {
+                status: execResult.status,
+                passedCount: execResult.passedCount,
+                totalCount: execResult.totalCount,
+                testCases: execResult.testCases.filter((t) => t.isPublic),
+                pointsAwarded: 0,
+                livesRemaining: 0,
+              });
+
+              io.to(roomId).emit('room_state_update', state);
+              io.to(roomId).emit('match_ended', { winnerId: null, reason: 'both_eliminated' });
+              return;
+            }
+          } else {
+            await RedisService.saveRoomState(roomId, state);
+          }
+          updatedState = state;
+        }
+
+        socket.emit('submission_result', {
+          status: execResult.status,
+          passedCount: execResult.passedCount,
+          totalCount: execResult.totalCount,
+          testCases: execResult.testCases.filter((t) => t.isPublic),
+          pointsAwarded: 0,
+          livesRemaining: updatedState.players[userId]?.lives ?? player.lives,
+        });
+
+        io.to(roomId).emit('room_state_update', updatedState);
 
       } finally {
         releaseLock!();

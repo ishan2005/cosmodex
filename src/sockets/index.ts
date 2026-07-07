@@ -75,67 +75,67 @@ export function initSocketIO(server: HTTPServer): Server {
   setInterval(async () => {
     for (const roomId of activeRoomIds) {
       try {
-      const state = await RedisService.getRoomState(roomId);
+        const state = await RedisService.getRoomState(roomId);
 
-      if (!state || state.status !== 'ACTIVE') {
-        // Room no longer active or expired — stop tracking it
-        activeRoomIds.delete(roomId);
-        continue;
-      }
-
-      const isBossStage = state.currentStage === 6;
-
-      if (isBossStage) {
-        // ── Boss Battle: shared room-level countdown ─────────────────────
-        state.stageTimeRemaining = Math.max(0, state.stageTimeRemaining - 1);
-
-        // Check if both players are eliminated (match should end immediately)
-        const allEliminated = state.playerIds.every(
-          (id) => state.players[id]?.status === 'ELIMINATED'
-        );
-
-        if (state.stageTimeRemaining <= 0 || allEliminated) {
-          logger.info(`[Timer] Boss Battle ended for room ${roomId} — ${allEliminated ? 'both eliminated' : 'timed out'}`);
-          const timedOutState = await MatchService.handleStageTimeout(roomId);
-          io.to(roomId).emit('room_state_update', timedOutState);
-          io.to(roomId).emit('match_ended', { winnerId: null, reason: allEliminated ? 'both_eliminated' : 'timeout' });
+        if (!state || state.status !== 'ACTIVE') {
+          // Room no longer active or expired — stop tracking it
           activeRoomIds.delete(roomId);
-        } else {
-          await RedisService.saveRoomState(roomId, state);
-          io.to(roomId).emit('room_state_update', state);
-        }
-      } else {
-        // ── Sprint stages: each player has their own independent timer ───
-        const now = Date.now();
-        let anyTimedOut = false;
-
-        for (const pid of state.playerIds) {
-          const player = state.players[pid];
-          // Only active coders need a timer check
-          if (['ELIMINATED', 'DONE', 'SKIPPED', 'WAITING_DECISION'].includes(player.status)) continue;
-
-          // Recompute from start time (avoids drift from sleep/lag)
-          const elapsed = Math.floor((now - player.stageStartTime) / 1000);
-          player.stageTimeRemaining = Math.max(0, player.stageDuration - elapsed);
-
-          if (player.stageTimeRemaining <= 0) anyTimedOut = true;
+          continue;
         }
 
-        if (anyTimedOut) {
-          const updatedState = await MatchService.handlePlayerTimeouts(roomId);
-          io.to(roomId).emit('room_state_update', updatedState);
-          if (updatedState.status === 'COMPLETED') {
-            const survivorId = updatedState.playerIds.find(
-              (id) => updatedState.players[id]?.status !== 'ELIMINATED'
-            ) ?? null;
-            io.to(roomId).emit('match_ended', { winnerId: survivorId, reason: 'timeout' });
+        const isBossStage = state.currentStage === 6;
+
+        if (isBossStage) {
+          // ── Boss Battle: shared room-level countdown ─────────────────────
+          state.stageTimeRemaining = Math.max(0, state.stageTimeRemaining - 1);
+
+          // Check if both players are eliminated (match should end immediately)
+          const allEliminated = state.playerIds.every(
+            (id) => state.players[id]?.status === 'ELIMINATED'
+          );
+
+          if (state.stageTimeRemaining <= 0 || allEliminated) {
+            logger.info(`[Timer] Boss Battle ended for room ${roomId} — ${allEliminated ? 'both eliminated' : 'timed out'}`);
+            const timedOutState = await MatchService.handleStageTimeout(roomId);
+            io.to(roomId).emit('room_state_update', timedOutState);
+            io.to(roomId).emit('match_ended', { winnerId: null, reason: allEliminated ? 'both_eliminated' : 'timeout' });
             activeRoomIds.delete(roomId);
+          } else {
+            await RedisService.saveRoomState(roomId, state);
+            io.to(roomId).emit('room_state_update', state);
           }
         } else {
-          await RedisService.saveRoomState(roomId, state);
-          io.to(roomId).emit('room_state_update', state);
+          // ── Sprint stages: each player has their own independent timer ───
+          const now = Date.now();
+          let anyTimedOut = false;
+
+          for (const pid of state.playerIds) {
+            const player = state.players[pid];
+            // Only active coders need a timer check
+            if (['ELIMINATED', 'DONE', 'SKIPPED', 'WAITING_DECISION'].includes(player.status)) continue;
+
+            // Recompute from start time (avoids drift from sleep/lag)
+            const elapsed = Math.floor((now - player.stageStartTime) / 1000);
+            player.stageTimeRemaining = Math.max(0, player.stageDuration - elapsed);
+
+            if (player.stageTimeRemaining <= 0) anyTimedOut = true;
+          }
+
+          if (anyTimedOut) {
+            const updatedState = await MatchService.handlePlayerTimeouts(roomId);
+            io.to(roomId).emit('room_state_update', updatedState);
+            if (updatedState.status === 'COMPLETED') {
+              const survivorId = updatedState.playerIds.find(
+                (id) => updatedState.players[id]?.status !== 'ELIMINATED'
+              ) ?? null;
+              io.to(roomId).emit('match_ended', { winnerId: survivorId, reason: 'timeout' });
+              activeRoomIds.delete(roomId);
+            }
+          } else {
+            await RedisService.saveRoomState(roomId, state);
+            io.to(roomId).emit('room_state_update', state);
+          }
         }
-      }
       } catch (err) {
         logger.error(`[Timer] Error processing room ${roomId}: ${err instanceof Error ? err.message : err}`);
       }
