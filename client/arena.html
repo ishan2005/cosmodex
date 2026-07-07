@@ -359,10 +359,26 @@ function getLanguageStarters(title) {
   };
 }
 
-// ── AUTH GUARD ─────────────────────────────────────────────────────
+// ── AUTH GUARD (validates token with server) ──────────────────────
 const _storedToken = localStorage.getItem('cosmodex_token') || '';
 const _storedUser  = JSON.parse(localStorage.getItem('cosmodex_user') || 'null');
 if (!_storedToken || !_storedUser) { window.location.replace('/login.html'); }
+
+// Validate token is still valid (async — runs in background)
+(async () => {
+  try {
+    const res = await fetch('/api/users/me', {
+      headers: { 'Authorization': `Bearer ${_storedToken}` },
+    });
+    if (!res.ok) {
+      localStorage.removeItem('cosmodex_token');
+      localStorage.removeItem('cosmodex_user');
+      window.location.replace('/login.html');
+    }
+  } catch {
+    // Server unreachable — let user stay (they may reconnect)
+  }
+})();
 
 let myUserId   = _storedUser?.id       || '';
 let myUsername = _storedUser?.username  || '';

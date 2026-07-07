@@ -5,11 +5,17 @@ import { registerMatchmakingHandlers } from './matchmaking.handler.js';
 import { RedisService } from '../services/redis.service.js';
 import { MatchService } from '../services/match.service.js';
 import { MatchmakingService } from '../services/matchmaking.service.js';
-import { redis } from '../config/redis.js';
 import { decodeToken } from '../config/jwt.js';
 import { logger } from '../config/logger.js';
 
 let io: Server;
+
+/**
+ * In-memory set of active room IDs. Populated when a room is created,
+ * removed when a match ends. Eliminates the need to scan all Redis keys
+ * with KEYS every second (O(N) and blocks Redis in production).
+ */
+export const activeRoomIds = new Set<string>();
 
 export function initSocketIO(server: HTTPServer): Server {
   io = new Server(server, {
@@ -63,14 +69,19 @@ export function initSocketIO(server: HTTPServer): Server {
   // ── BACKGROUND TIMER TICK (1s) ──────────────────────────────
   // Decrements stageTimeRemaining for every active room and broadcasts the
   // updated state. Handles stage timeouts automatically.
+  //
+  // Uses the in-memory activeRoomIds set instead of scanning all Redis keys
+  // every second (redis.keys is O(N) and blocks the Redis event loop).
   setInterval(async () => {
-    const roomKeys = await redis.keys('room:*');
-
-    for (const key of roomKeys) {
-      const roomId = key.replace('room:', '');
+    for (const roomId of activeRoomIds) {
+      try {
       const state = await RedisService.getRoomState(roomId);
 
-      if (!state || state.status !== 'ACTIVE') continue;
+      if (!state || state.status !== 'ACTIVE') {
+        // Room no longer active or expired — stop tracking it
+        activeRoomIds.delete(roomId);
+        continue;
+      }
 
       const isBossStage = state.currentStage === 6;
 
@@ -78,11 +89,17 @@ export function initSocketIO(server: HTTPServer): Server {
         // ── Boss Battle: shared room-level countdown ─────────────────────
         state.stageTimeRemaining = Math.max(0, state.stageTimeRemaining - 1);
 
-        if (state.stageTimeRemaining <= 0) {
-          logger.info(`[Timer] Boss Battle timed out for room ${roomId}`);
+        // Check if both players are eliminated (match should end immediately)
+        const allEliminated = state.playerIds.every(
+          (id) => state.players[id]?.status === 'ELIMINATED'
+        );
+
+        if (state.stageTimeRemaining <= 0 || allEliminated) {
+          logger.info(`[Timer] Boss Battle ended for room ${roomId} — ${allEliminated ? 'both eliminated' : 'timed out'}`);
           const timedOutState = await MatchService.handleStageTimeout(roomId);
           io.to(roomId).emit('room_state_update', timedOutState);
-          io.to(roomId).emit('match_ended', { winnerId: null, reason: 'timeout' });
+          io.to(roomId).emit('match_ended', { winnerId: null, reason: allEliminated ? 'both_eliminated' : 'timeout' });
+          activeRoomIds.delete(roomId);
         } else {
           await RedisService.saveRoomState(roomId, state);
           io.to(roomId).emit('room_state_update', state);
@@ -112,11 +129,15 @@ export function initSocketIO(server: HTTPServer): Server {
               (id) => updatedState.players[id]?.status !== 'ELIMINATED'
             ) ?? null;
             io.to(roomId).emit('match_ended', { winnerId: survivorId, reason: 'timeout' });
+            activeRoomIds.delete(roomId);
           }
         } else {
           await RedisService.saveRoomState(roomId, state);
           io.to(roomId).emit('room_state_update', state);
         }
+      }
+      } catch (err) {
+        logger.error(`[Timer] Error processing room ${roomId}: ${err instanceof Error ? err.message : err}`);
       }
     }
   }, 1000);

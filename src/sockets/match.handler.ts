@@ -11,6 +11,20 @@ import { logger } from '../config/logger.js';
  */
 const decisionTimers = new Map<string, NodeJS.Timeout>();
 
+/**
+ * Per-room submission lock to prevent race conditions.
+ * When two players submit simultaneously, the second submission waits for the first
+ * to complete before reading/writing room state, preventing stale-state overwrites.
+ */
+const roomSubmitLocks = new Map<string, Promise<void>>();
+
+/**
+ * Auto-save throttle: tracks the last save timestamp per userId.
+ * Limits Redis writes to at most once per second per user.
+ */
+const lastSaveTime = new Map<string, number>();
+const AUTO_SAVE_THROTTLE_MS = 1000;
+
 function clearDecisionTimer(roomId: string, userId: string): void {
   const key = `${roomId}:${userId}`;
   const timer = decisionTimers.get(key);
@@ -88,11 +102,17 @@ export function registerMatchHandlers(io: Server, socket: Socket) {
     io.to(roomId).emit('room_state_update', state);
   });
 
-  // ── 2. AUTO SAVE DRAFT ────────────────────────────────────────
+  // ── 2. AUTO SAVE DRAFT (throttled: max 1/sec per user) ────────
   socket.on('auto_save_draft', async (payload: { roomId: string; userId: string; code: string }) => {
     const { roomId, userId, code } = payload;
 
     if (!roomId || !userId || typeof code !== 'string') return;
+
+    // Throttle: skip if called within AUTO_SAVE_THROTTLE_MS of the last save
+    const now = Date.now();
+    const lastTime = lastSaveTime.get(userId) ?? 0;
+    if (now - lastTime < AUTO_SAVE_THROTTLE_MS) return;
+    lastSaveTime.set(userId, now);
 
     // Save draft + update the live state in one go
     await RedisService.saveDraft(roomId, userId, code);
@@ -104,7 +124,7 @@ export function registerMatchHandlers(io: Server, socket: Socket) {
     await RedisService.saveRoomState(roomId, state);
   });
 
-  // ── 3. SUBMIT CODE ────────────────────────────────────────────
+  // ── 3. SUBMIT CODE (with per-room lock) ───────────────────────
   socket.on(
     'submit_code',
     async (payload: {
@@ -120,6 +140,17 @@ export function registerMatchHandlers(io: Server, socket: Socket) {
         socket.emit('error', { message: 'submit_code requires roomId, userId, problemId, code, language' });
         return;
       }
+
+      // ── Per-room submission lock ───────────────────────────────
+      // Prevents race conditions: if both players submit at the same time,
+      // the second submission waits for the first to finish updating room state.
+      const prevLock = roomSubmitLocks.get(roomId) ?? Promise.resolve();
+      let releaseLock: () => void;
+      const myLock = new Promise<void>((resolve) => { releaseLock = resolve; });
+      roomSubmitLocks.set(roomId, prevLock.then(() => myLock));
+
+      try {
+      await prevLock; // wait for any previous submission on this room to finish
 
       const state = await RedisService.getRoomState(roomId);
       if (!state) {
@@ -314,6 +345,10 @@ export function registerMatchHandlers(io: Server, socket: Socket) {
       });
 
       io.to(roomId).emit('room_state_update', updatedState);
+
+      } finally {
+        releaseLock!();
+      }
     }
   );
 

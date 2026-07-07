@@ -345,11 +345,27 @@ body {
 </div>
 
 <script>
-// ── If already logged in, skip login page ──
-const existingToken = localStorage.getItem('cosmodex_token');
-if (existingToken) {
-  window.location.replace('/arena.html');
-}
+// ── If already logged in, validate token before redirect ──
+(async () => {
+  const existingToken = localStorage.getItem('cosmodex_token');
+  if (!existingToken) return;
+
+  try {
+    const res = await fetch('/api/users/me', {
+      headers: { 'Authorization': `Bearer ${existingToken}` },
+    });
+    if (res.ok) {
+      // Token is still valid — go straight to arena
+      window.location.replace('/arena.html');
+    } else {
+      // Token expired or invalid — clear stale session
+      localStorage.removeItem('cosmodex_token');
+      localStorage.removeItem('cosmodex_user');
+    }
+  } catch {
+    // Server unreachable — keep user on login page
+  }
+})();
 
 function switchTab(tab) {
   document.getElementById('tab-login').classList.toggle('active', tab === 'login');

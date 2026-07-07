@@ -65,4 +65,26 @@ export class RedisService {
     const count = await redis.exists(`${ROOM_PREFIX}${roomId}`);
     return count === 1;
   }
+
+  /**
+   * Find the active room (if any) that a user is currently participating in.
+   * Used to prevent a player from joining the matchmaking queue while already in a match.
+   * Returns the roomId if found, null otherwise.
+   */
+  static async findActiveRoomForUser(userId: string): Promise<string | null> {
+    const keys = await redis.keys(`${ROOM_PREFIX}*`);
+    for (const key of keys) {
+      const raw = await redis.get(key);
+      if (!raw) continue;
+      try {
+        const state = JSON.parse(raw) as RoomState;
+        if (state.status === 'ACTIVE' && state.playerIds.includes(userId)) {
+          return state.roomId;
+        }
+      } catch {
+        // Ignore malformed entries
+      }
+    }
+    return null;
+  }
 }

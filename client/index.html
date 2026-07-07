@@ -631,13 +631,26 @@ function hearts(n,max=5){
   return Array.from({length:max},(_,i)=>`<span class="h ${i<n?'':'dead'}">❤</span>`).join('');
 }
 
-// ── PRELOAD ───────────────────────────────────
+// ── PRELOAD ───────────────────────────────────────
 window.addEventListener('load', async () => {
   // Restore session from localStorage
   try {
-    const savedToken = localStorage.getItem('cx_token');
-    const savedUser  = JSON.parse(localStorage.getItem('cx_user') || 'null');
+    const savedToken = localStorage.getItem('cosmodex_token');
+    const savedUser  = JSON.parse(localStorage.getItem('cosmodex_user') || 'null');
     if (savedToken && savedUser) {
+      // Validate token is still valid before trusting it
+      try {
+        const meRes = await fetch('/api/users/me', {
+          headers: { 'Authorization': `Bearer ${savedToken}` },
+        });
+        if (!meRes.ok) throw new Error('Token invalid');
+      } catch {
+        // Token expired or server unreachable — clear stale session
+        localStorage.removeItem('cosmodex_token');
+        localStorage.removeItem('cosmodex_user');
+        return;
+      }
+
       myToken = savedToken; myId = savedUser.id;
       myName = savedUser.username; myElo = savedUser.eloRating;
       showLobby();
@@ -692,8 +705,8 @@ async function doRegister() {
 function saveSession(res) {
   myToken = res.token; myId = res.user.id;
   myName = res.user.username; myElo = res.user.eloRating;
-  localStorage.setItem('cx_token', myToken);
-  localStorage.setItem('cx_user',  JSON.stringify(res.user));
+  localStorage.setItem('cosmodex_token', myToken);
+  localStorage.setItem('cosmodex_user',  JSON.stringify(res.user));
 }
 
 function showLobby() {
@@ -706,7 +719,7 @@ function showLobby() {
 }
 
 function doLogout() {
-  localStorage.removeItem('cx_token'); localStorage.removeItem('cx_user');
+  localStorage.removeItem('cosmodex_token'); localStorage.removeItem('cosmodex_user');
   myToken=''; myId=''; myName=''; myElo=0;
   document.getElementById('lobby-box').style.display = 'none';
   document.getElementById('auth-box').style.display  = 'flex';
@@ -716,6 +729,7 @@ function doLogout() {
 function findMatch() {
   if (!myToken || !myId) { toast('Please log in first','err'); return; }
   const btn = document.getElementById('find-btn');
+  if (btn.disabled) return; // Double-click guard
   btn.disabled = true; btn.textContent = 'Connecting…';
 
   // Show queue screen with real user info

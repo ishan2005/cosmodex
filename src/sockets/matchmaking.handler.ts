@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { MatchmakingService, QueueEntry } from '../services/matchmaking.service.js';
 import { MatchService } from '../services/match.service.js';
+import { RedisService } from '../services/redis.service.js';
 import { prisma } from '../config/db.js';
 import { logger } from '../config/logger.js';
 import crypto from 'crypto';
@@ -20,6 +21,12 @@ import crypto from 'crypto';
  *   queue_status  { size, avgWaitSeconds }
  *   error         { message }
  */
+
+// ── userId ↔ socketId mapping for disconnect cleanup ─────────────
+// Tracks which socket belongs to which user so we can dequeue on disconnect.
+const userSocketMap = new Map<string, string>(); // userId → socketId
+const socketUserMap = new Map<string, string>(); // socketId → userId
+
 export function registerMatchmakingHandlers(io: Server, socket: Socket) {
   // ── JOIN QUEUE ────────────────────────────────────────────────
   socket.on('join_queue', async (payload: { userId: string }) => {
@@ -38,6 +45,24 @@ export function registerMatchmakingHandlers(io: Server, socket: Socket) {
       socket.emit('error', { message: 'User not found' });
       return;
     }
+
+    // ── GUARD: prevent duplicate queue entry ─────────────────────
+    const alreadyQueued = await MatchmakingService.isInQueue(userId);
+    if (alreadyQueued) {
+      socket.emit('error', { message: 'You are already in the matchmaking queue' });
+      return;
+    }
+
+    // ── GUARD: prevent joining queue while in an active match ────
+    const activeRoomId = await RedisService.findActiveRoomForUser(userId);
+    if (activeRoomId) {
+      socket.emit('error', { message: 'You are already in an active match. Finish or leave it first.' });
+      return;
+    }
+
+    // Track userId ↔ socketId mapping for disconnect cleanup
+    userSocketMap.set(userId, socket.id);
+    socketUserMap.set(socket.id, userId);
 
     // BUG 6 FIX: Always join the personal user room BEFORE the opponent check.
     // Previously this only happened in the else-branch (queued path). If an opponent was
@@ -96,7 +121,6 @@ export function registerMatchmakingHandlers(io: Server, socket: Socket) {
         problemIds.push(...allProbs.map(p => p.id).slice(0, 6));
       }
 
-
       // Create the room
       const roomId = `room-${crypto.randomUUID()}`;
       const roomState = await MatchService.createRoomState(
@@ -154,6 +178,11 @@ export function registerMatchmakingHandlers(io: Server, socket: Socket) {
     const { userId } = payload;
     await MatchmakingService.dequeue(userId);
     socket.leave(`user:${userId}`);
+
+    // Clean up tracking maps
+    userSocketMap.delete(userId);
+    socketUserMap.delete(socket.id);
+
     socket.emit('queue_left', { message: 'Left the matchmaking queue' });
   });
 
@@ -164,6 +193,18 @@ export function registerMatchmakingHandlers(io: Server, socket: Socket) {
   });
 
   // ── AUTO DEQUEUE ON DISCONNECT ────────────────────────────────
-  // Note: match.handler.ts handles the main disconnect event.
-  // Matchmaking dequeue happens via TTL if the player disconnects without emitting leave_queue.
+  // Explicitly dequeue the player instead of relying on 2-minute TTL.
+  // This prevents ghost players from matching with real ones.
+  socket.on('disconnect', async () => {
+    const userId = socketUserMap.get(socket.id);
+    if (userId) {
+      const wasQueued = await MatchmakingService.isInQueue(userId);
+      if (wasQueued) {
+        await MatchmakingService.dequeue(userId);
+        logger.info(`[Matchmaking] Auto-dequeued ${userId} on socket disconnect`);
+      }
+      userSocketMap.delete(userId);
+      socketUserMap.delete(socket.id);
+    }
+  });
 }
