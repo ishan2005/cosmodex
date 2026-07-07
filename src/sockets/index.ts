@@ -7,15 +7,12 @@ import { MatchService } from '../services/match.service.js';
 import { MatchmakingService } from '../services/matchmaking.service.js';
 import { decodeToken } from '../config/jwt.js';
 import { logger } from '../config/logger.js';
+import { activeRoomIds } from '../shared/activeRooms.js';
 
 let io: Server;
 
-/**
- * In-memory set of active room IDs. Populated when a room is created,
- * removed when a match ends. Eliminates the need to scan all Redis keys
- * with KEYS every second (O(N) and blocks Redis in production).
- */
-export const activeRoomIds = new Set<string>();
+// Re-export so existing consumers still work
+export { activeRoomIds };
 
 export function initSocketIO(server: HTTPServer): Server {
   io = new Server(server, {

@@ -2,7 +2,7 @@ import { prisma } from '../config/db.js';
 import { RedisService } from './redis.service.js';
 import { RoomState, PlayerState, PlayerStatus } from '../types/index.js';
 import { logger } from '../config/logger.js';
-import { activeRoomIds } from '../sockets/index.js';
+import { activeRoomIds } from '../shared/activeRooms.js';
 
 const STAGE_TIMER_SEC = 180; // 3 minutes per Sprint stage
 const BOSS_TIMER_SEC = 1200; // 20 minutes for Boss Battle
