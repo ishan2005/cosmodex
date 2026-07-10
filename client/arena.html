@@ -307,6 +307,80 @@ require(['vs/editor/editor.main'], function () {
     }
   });
 
+  // ── LANGUAGE INDENTATION RULES ──
+  // Python: auto-indent after lines ending with ':'
+  monaco.languages.setLanguageConfiguration('python', {
+    onEnterRules: [
+      {
+        // After a line ending with ':' (with optional comment/whitespace)
+        beforeText: /:\s*(#.*)?$/,
+        action: { indentAction: monaco.languages.IndentAction.Indent }
+      },
+      {
+        // After opening bracket/paren with nothing after
+        beforeText: /[\(\[\{]\s*$/,
+        action: { indentAction: monaco.languages.IndentAction.Indent }
+      },
+      {
+        // 'return', 'pass', 'break', 'continue', 'raise' → outdent next line
+        beforeText: /^\s+(return|pass|break|continue|raise)\b.*$/,
+        action: { indentAction: monaco.languages.IndentAction.Outdent }
+      }
+    ],
+    brackets: [['(', ')'], ['[', ']'], ['{', '}']],
+    autoClosingPairs: [
+      { open: '(', close: ')' },
+      { open: '[', close: ']' },
+      { open: '{', close: '}' },
+      { open: '"', close: '"', notIn: ['string'] },
+      { open: "'", close: "'", notIn: ['string'] },
+      { open: '"""', close: '"""' },
+      { open: "'''", close: "'''" },
+    ],
+    indentationRules: {
+      increaseIndentPattern: /:\s*(#.*)?$|[\(\[\{]\s*$/,
+      decreaseIndentPattern: /^\s*(return|pass|break|continue|raise|else:|elif\s|except|finally:)/,
+    }
+  });
+
+  // JavaScript: auto-indent after { and outdent after }
+  monaco.languages.setLanguageConfiguration('javascript', {
+    onEnterRules: [
+      {
+        beforeText: /\{\s*$/,
+        afterText: /^\s*\}/,
+        action: { indentAction: monaco.languages.IndentAction.IndentOutdent }
+      },
+      {
+        beforeText: /\{\s*$/,
+        action: { indentAction: monaco.languages.IndentAction.Indent }
+      }
+    ],
+    indentationRules: {
+      increaseIndentPattern: /\{[^}"']*$/,
+      decreaseIndentPattern: /^\s*\}/,
+    }
+  });
+
+  // C++: auto-indent after { and outdent after }
+  monaco.languages.setLanguageConfiguration('cpp', {
+    onEnterRules: [
+      {
+        beforeText: /\{\s*$/,
+        afterText: /^\s*\}/,
+        action: { indentAction: monaco.languages.IndentAction.IndentOutdent }
+      },
+      {
+        beforeText: /\{\s*$/,
+        action: { indentAction: monaco.languages.IndentAction.Indent }
+      }
+    ],
+    indentationRules: {
+      increaseIndentPattern: /\{[^}"']*$/,
+      decreaseIndentPattern: /^\s*\}/,
+    }
+  });
+
   editor = monaco.editor.create(document.getElementById('code-editor'), {
     value: '# Write your solution here\n',
     language: 'python',
