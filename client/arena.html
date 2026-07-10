@@ -327,6 +327,15 @@ require(['vs/editor/editor.main'], function () {
     padding: { top: 12, bottom: 12 },
     overviewRulerLanes: 0,
     scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
+    // ── INDENTATION & AUTO-FORMAT ──
+    autoIndent: 'full',
+    formatOnType: true,
+    formatOnPaste: true,
+    autoClosingBrackets: 'always',
+    autoClosingQuotes: 'always',
+    autoSurround: 'languageDefined',
+    bracketPairColorization: { enabled: true },
+    detectIndentation: false,
   });
 
   editor.onDidChangeModelContent(() => {
@@ -514,7 +523,7 @@ async function queueUp() {
   socket.on('error', (e) => {
     toast(e.message, 'err');
     btn.disabled = false;
-    btn.textContent = `Queue Up as ${p.username}`;
+    btn.textContent = `Queue Up as ${myUsername}`;
     status.textContent = '';
   });
 
@@ -529,7 +538,7 @@ async function queueUp() {
     }
     if (document.getElementById('lobby').classList.contains('active')) {
       btn.disabled = false;
-      btn.textContent = `Queue Up as ${p.username}`;
+      btn.textContent = `Queue Up as ${myUsername}`;
       status.textContent = 'Disconnected.';
     }
   });

@@ -3,11 +3,14 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Cleaning up existing problems & test cases…');
-  await prisma.testCase.deleteMany();
-  await prisma.problem.deleteMany();
+  // Skip seeding if problems already exist (idempotent for production deploys)
+  const existingCount = await prisma.problem.count();
+  if (existingCount > 0) {
+    console.log(`Database already has ${existingCount} problems — skipping seed.`);
+    return;
+  }
 
-  console.log('Seeding 20 new problems partitioned by difficulty…');
+  console.log('No problems found. Seeding 20 new problems partitioned by difficulty…');
 
   const problemsData = [
     // ── EASY PROBLEMS ──

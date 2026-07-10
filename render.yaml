@@ -1,6 +1,12 @@
 # Render deployment configuration
 # See: https://render.com/docs/deploy-node-express-app
 
+databases:
+  - name: cosmodex-db
+    plan: free
+    databaseName: cosmodex
+    user: cosmodex
+
 services:
   - type: web
     name: cosmodex-battle-server
@@ -13,7 +19,9 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        value: file:./prisma/dev.db
+        fromDatabase:
+          name: cosmodex-db
+          property: connectionString
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN

@@ -80,8 +80,10 @@ function decodeB64(str: string | null): string {
 class Judge0Executor implements IExecutor {
   private readonly endpoint: string;
   private readonly authToken: string | undefined;
-  private readonly POLL_INTERVAL_MS = 500;
-  private readonly POLL_TIMEOUT_MS  = 10_000;
+  private readonly POLL_INTERVAL_MS = 400;
+  private readonly POLL_TIMEOUT_MS  = 15_000;
+  /** Maximum number of test cases to batch in one request */
+  private readonly MAX_BATCH_SIZE = 20;
 
   constructor() {
     this.endpoint  = (process.env.JUDGE0_URL || 'http://localhost:2358').replace(/\/$/, '');
@@ -95,7 +97,7 @@ class Judge0Executor implements IExecutor {
   }
 
   /**
-   * Submit code + stdin to Judge0 and return the submission token.
+   * Submit code + stdin to Judge0 (single submission) — used by runSingle.
    */
   private async submit(
     code: string,
@@ -124,6 +126,39 @@ class Judge0Executor implements IExecutor {
 
     const data = (await res.json()) as { token: string };
     return data.token;
+  }
+
+  /**
+   * Submit ALL test cases in a single batch request to Judge0.
+   * Returns an array of tokens (one per submission).
+   */
+  private async submitBatch(
+    code: string,
+    languageId: number,
+    testCases: { input: string }[],
+    timeLimitSec: number
+  ): Promise<string[]> {
+    const submissions = testCases.map((tc) => ({
+      source_code: b64(code),
+      language_id: languageId,
+      stdin: b64(tc.input),
+      cpu_time_limit: timeLimitSec,
+      memory_limit: 131072,
+    }));
+
+    const res = await fetch(`${this.endpoint}/submissions/batch?base64_encoded=true`, {
+      method:  'POST',
+      headers: this.headers,
+      body:    JSON.stringify({ submissions }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Judge0 batch submit failed (${res.status}): ${text}`);
+    }
+
+    const data = (await res.json()) as { token: string }[];
+    return data.map((d) => d.token);
   }
 
   /**
@@ -158,22 +193,66 @@ class Judge0Executor implements IExecutor {
   }
 
   /**
-   * Run a single test case through Judge0.
+   * Poll ALL tokens in a single batch GET request.
+   * Returns results for completed submissions; unfinished ones will be polled again.
    */
-  private async runTestCase(
-    code: string,
-    languageId: number,
-    tc: { input: string; expected: string; isPublic: boolean },
-    timeLimitSec: number
-  ): Promise<TestCaseResult> {
-    const token  = await this.submit(code, languageId, tc.input, timeLimitSec);
-    const result = await this.pollResult(token);
+  private async pollBatchResults(tokens: string[]): Promise<Judge0Response[]> {
+    const deadline = Date.now() + this.POLL_TIMEOUT_MS;
+    const results: (Judge0Response | null)[] = new Array(tokens.length).fill(null);
+    const pendingIndices = tokens.map((_, i) => i);
 
+    while (pendingIndices.length > 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, this.POLL_INTERVAL_MS));
+
+      const pendingTokens = pendingIndices.map((i) => tokens[i]);
+      const tokenStr = pendingTokens.join(',');
+
+      const res = await fetch(
+        `${this.endpoint}/submissions/batch?tokens=${tokenStr}&base64_encoded=true&fields=token,status,stdout,stderr,compile_output,time,memory`,
+        { headers: this.headers }
+      );
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Judge0 batch poll failed (${res.status}): ${text}`);
+      }
+
+      const data = (await res.json()) as { submissions: Judge0Response[] };
+      const submissions = data.submissions || data as unknown as Judge0Response[];
+
+      // Match results back to their original indices
+      const newPending: number[] = [];
+      for (let j = 0; j < pendingIndices.length; j++) {
+        const origIdx = pendingIndices[j];
+        const sub = submissions[j];
+        if (sub && sub.status.id !== 1 && sub.status.id !== 2) {
+          results[origIdx] = sub;
+        } else {
+          newPending.push(origIdx);
+        }
+      }
+      pendingIndices.length = 0;
+      pendingIndices.push(...newPending);
+    }
+
+    if (pendingIndices.length > 0) {
+      throw new Error(`Judge0 batch polling timed out — ${pendingIndices.length} submissions still pending`);
+    }
+
+    return results as Judge0Response[];
+  }
+
+  /**
+   * Convert a Judge0 result into our TestCaseResult format.
+   */
+  private parseResult(
+    result: Judge0Response,
+    tc: { input: string; expected: string; isPublic: boolean }
+  ): TestCaseResult {
     const actual   = decodeB64(result.stdout).trim().replace(/\r\n/g, '\n');
     const expected = tc.expected.trim().replace(/\r\n/g, '\n');
 
     if (result.status.id === 3) {
-      // ACCEPTED by Judge0 — verify output matches expected
       return {
         passed:   actual === expected,
         input:    tc.input,
@@ -183,7 +262,6 @@ class Judge0Executor implements IExecutor {
       };
     }
 
-    // Non-accepted — decode error output
     const errOutput =
       decodeB64(result.compile_output) ||
       decodeB64(result.stderr) ||
@@ -218,20 +296,26 @@ class Judge0Executor implements IExecutor {
     }
 
     const timeLimitSec = problem?.timeLimitSec ?? 3;
-    logger.info(`[Judge0] Executing ${testCases.length} test cases | lang=${language} | timeLimit=${timeLimitSec}s`);
+    logger.info(`[Judge0] Batch executing ${testCases.length} test cases | lang=${language} | timeLimit=${timeLimitSec}s`);
 
+    // ── BATCH SUBMIT: send ALL test cases in one HTTP call ────────
+    const tokens = await this.submitBatch(code, languageId, testCases, timeLimitSec);
+
+    // ── BATCH POLL: poll all tokens at once ───────────────────────
+    const judge0Results = await this.pollBatchResults(tokens);
+
+    // ── AGGREGATE RESULTS ─────────────────────────────────────────
     const results: TestCaseResult[] = [];
     let passedCount = 0;
     let finalStatus: ExecutionResult['status'] = 'ACCEPTED';
 
-    for (const tc of testCases) {
-      const result = await this.runTestCase(code, languageId, tc, timeLimitSec);
+    for (let i = 0; i < testCases.length; i++) {
+      const result = this.parseResult(judge0Results[i], testCases[i]);
       results.push(result);
 
       if (result.passed) {
         passedCount++;
       } else if (finalStatus === 'ACCEPTED') {
-        // Classify the first failure
         const out = result.actual.toLowerCase();
         if (out.includes('time limit') || out.includes('timed out')) {
           finalStatus = 'TIME_LIMIT_EXCEEDED';
@@ -347,6 +431,28 @@ function spawnWithStdin(
   });
 }
 
+/** Max concurrent child processes for local test case execution */
+const LOCAL_CONCURRENCY = 4;
+
+/**
+ * Run items through an async function with bounded concurrency.
+ */
+async function parallelMap<T, R>(items: T[], concurrency: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const idx = nextIndex++;
+      results[idx] = await fn(items[idx], idx);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 class LocalMultiExecutor implements IExecutor {
   async execute(code: string, language: string, problemId: string): Promise<ExecutionResult> {
     const langKey = language.toLowerCase();
@@ -378,10 +484,6 @@ class LocalMultiExecutor implements IExecutor {
 
     fs.writeFileSync(srcPath, code, 'utf-8');
 
-    const results: TestCaseResult[] = [];
-    let passedCount = 0;
-    let finalStatus: ExecutionResult['status'] = 'ACCEPTED';
-
     try {
       // ── COMPILE (C++ only) ────────────────────────────────────
       if (config.compile) {
@@ -391,18 +493,16 @@ class LocalMultiExecutor implements IExecutor {
         if (compileOut.exitCode !== 0 || compileOut.timedOut) {
           const errMsg = compileOut.stderr.trim().substring(0, 600) || 'Compilation failed';
           logger.warn(`[LocalExec] Compile error for ${language}: ${errMsg}`);
-          // All test cases fail with compile error
-          for (const tc of testCases) {
-            results.push({ passed: false, input: tc.input, expected: tc.expected, actual: `Compilation Error:\n${errMsg}`, isPublic: tc.isPublic });
-          }
+          const results: TestCaseResult[] = testCases.map((tc) => ({
+            passed: false, input: tc.input, expected: tc.expected, actual: `Compilation Error:\n${errMsg}`, isPublic: tc.isPublic
+          }));
           return { status: 'RUNTIME_ERROR', passedCount: 0, totalCount: testCases.length, testCases: results };
         }
-        // Make binary executable
         try { fs.chmodSync(binPath, 0o755); } catch (_) { /* ignore */ }
       }
 
-      // ── RUN EACH TEST CASE ────────────────────────────────────
-      for (const tc of testCases) {
+      // ── RUN TEST CASES IN PARALLEL ─────────────────────────────
+      const results = await parallelMap(testCases, LOCAL_CONCURRENCY, async (tc): Promise<TestCaseResult> => {
         const { cmd, args } = config.getCmd(srcPath, binPath);
         const run = await spawnWithStdin(cmd, args, tc.input, timeoutMs);
 
@@ -410,29 +510,43 @@ class LocalMultiExecutor implements IExecutor {
         const expected = tc.expected.trim().replace(/\r\n/g, '\n');
 
         if (run.timedOut) {
-          results.push({ passed: false, input: tc.input, expected, actual: `Time Limit Exceeded (>${timeoutMs}ms)`, isPublic: tc.isPublic });
-          if (finalStatus === 'ACCEPTED') finalStatus = 'TIME_LIMIT_EXCEEDED';
+          return { passed: false, input: tc.input, expected, actual: `Time Limit Exceeded (>${timeoutMs}ms)`, isPublic: tc.isPublic };
         } else if (run.stderr && !actual) {
-          // stderr with no stdout = runtime crash
           const errMsg = run.stderr.trim().substring(0, 400);
-          results.push({ passed: false, input: tc.input, expected, actual: errMsg, isPublic: tc.isPublic });
-          if (finalStatus === 'ACCEPTED') finalStatus = 'RUNTIME_ERROR';
+          return { passed: false, input: tc.input, expected, actual: errMsg, isPublic: tc.isPublic };
         } else {
           const passed = actual === expected;
-          results.push({ passed, input: tc.input, expected, actual, isPublic: tc.isPublic });
-          if (passed) passedCount++;
-          else if (finalStatus === 'ACCEPTED') finalStatus = 'WRONG_ANSWER';
+          return { passed, input: tc.input, expected, actual, isPublic: tc.isPublic };
+        }
+      });
+
+      // ── AGGREGATE RESULTS ──────────────────────────────────────
+      let passedCount = 0;
+      let finalStatus: ExecutionResult['status'] = 'ACCEPTED';
+
+      for (const result of results) {
+        if (result.passed) {
+          passedCount++;
+        } else if (finalStatus === 'ACCEPTED') {
+          const out = result.actual.toLowerCase();
+          if (out.includes('time limit') || out.includes('timed out')) {
+            finalStatus = 'TIME_LIMIT_EXCEEDED';
+          } else if (out.includes('error') || out.includes('exception') || out.includes('traceback')) {
+            finalStatus = 'RUNTIME_ERROR';
+          } else {
+            finalStatus = 'WRONG_ANSWER';
+          }
         }
       }
+
+      const allPassed = passedCount === testCases.length;
+      logger.info(`[LocalExec] ${language} | ${passedCount}/${testCases.length} → ${allPassed ? 'ACCEPTED' : finalStatus}`);
+      return { status: allPassed ? 'ACCEPTED' : finalStatus, passedCount, totalCount: testCases.length, testCases: results };
     } finally {
       // Cleanup temp files
       try { if (fs.existsSync(srcPath)) fs.rmSync(srcPath, { force: true }); } catch (_) { /* ignore */ }
       try { if (fs.existsSync(binPath)) fs.rmSync(binPath, { force: true }); } catch (_) { /* ignore */ }
     }
-
-    const allPassed = passedCount === testCases.length;
-    logger.info(`[LocalExec] ${language} | ${passedCount}/${testCases.length} → ${allPassed ? 'ACCEPTED' : finalStatus}`);
-    return { status: allPassed ? 'ACCEPTED' : finalStatus, passedCount, totalCount: testCases.length, testCases: results };
   }
 
   /** Run code once with custom stdin — no test cases, no match state changes. Used by the Run button. */
