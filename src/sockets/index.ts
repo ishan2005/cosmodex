@@ -2,17 +2,19 @@ import { Server as HTTPServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { registerMatchHandlers } from './match.handler.js';
 import { registerMatchmakingHandlers } from './matchmaking.handler.js';
+import { registerMcqHandlers, triggerReveal, triggerNextRound } from './mcq.handler.js';
 import { RedisService } from '../services/redis.service.js';
 import { MatchService } from '../services/match.service.js';
+import { McqService } from '../services/mcq.service.js';
 import { MatchmakingService } from '../services/matchmaking.service.js';
 import { decodeToken } from '../config/jwt.js';
 import { logger } from '../config/logger.js';
-import { activeRoomIds } from '../shared/activeRooms.js';
+import { activeRoomIds, activeMcqRoomIds } from '../shared/activeRooms.js';
 
 let io: Server;
 
 // Re-export so existing consumers still work
-export { activeRoomIds };
+export { activeRoomIds, activeMcqRoomIds };
 
 export function initSocketIO(server: HTTPServer): Server {
   io = new Server(server, {
@@ -57,6 +59,7 @@ export function initSocketIO(server: HTTPServer): Server {
     // Register all event namespaces
     registerMatchHandlers(io, socket);
     registerMatchmakingHandlers(io, socket);
+    registerMcqHandlers(io, socket);
 
     socket.on('disconnect', (reason) => {
       logger.info(`WebSocket disconnected: ${ident} — reason: ${reason}`);
@@ -139,16 +142,86 @@ export function initSocketIO(server: HTTPServer): Server {
     }
   }, 1000);
 
+  // ── MCQ BACKGROUND TIMER TICK (1s) ─────────────────────────
+  // Handles round countdowns for MCQ battles.
+  // Separate from the code battle timer to keep logic clean.
+  setInterval(async () => {
+    for (const roomId of activeMcqRoomIds) {
+      try {
+        const state = await McqService.getMcqRoomState(roomId);
+
+        if (!state || state.status === 'COMPLETED') {
+          activeMcqRoomIds.delete(roomId);
+          continue;
+        }
+
+        const now = Date.now();
+        const elapsed = Math.floor((now - (state.roundEndTime - state.roundTimeRemaining * 1000)) / 1000);
+        const remaining = Math.max(0, Math.ceil((state.roundEndTime - now) / 1000));
+
+        if (remaining <= 0) {
+          if (state.status === 'ACTIVE') {
+            // Round timer expired — trigger reveal
+            await triggerReveal(io, roomId);
+          } else if (state.status === 'REVEAL') {
+            // Reveal timer expired — advance to next round
+            const nextState = await McqService.advanceRound(roomId);
+
+            if (nextState.status === 'COMPLETED') {
+              const p1 = nextState.players[nextState.playerIds[0]];
+              const p2 = nextState.players[nextState.playerIds[1]];
+              const winnerId = p1.score > p2.score ? p1.userId
+                             : p2.score > p1.score ? p2.userId
+                             : null;
+
+              io.to(roomId).emit('mcq_match_ended', {
+                winnerId,
+                reason: 'all_rounds_complete',
+                finalScores: {
+                  [p1.userId]: p1.score,
+                  [p2.userId]: p2.score,
+                },
+              });
+              io.to(roomId).emit('mcq_room_state', McqService.sanitizeForClient(nextState));
+              activeMcqRoomIds.delete(roomId);
+            } else {
+              // Push new question
+              io.to(roomId).emit('mcq_next_round', {
+                round: nextState.currentRound,
+                question: nextState.currentQuestion,
+                timeRemaining: nextState.roundTimeRemaining,
+              });
+              io.to(roomId).emit('mcq_room_state', McqService.sanitizeForClient(nextState));
+            }
+          }
+        } else {
+          // Just update the countdown
+          state.roundTimeRemaining = remaining;
+          await McqService.saveMcqRoomState(roomId, state);
+          io.to(roomId).emit('mcq_room_state', McqService.sanitizeForClient(state));
+        }
+      } catch (err) {
+        logger.error(`[MCQ Timer] Error processing room ${roomId}: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+  }, 1000);
+
   // ── MATCHMAKING PULSE (5s) ──────────────────────────────────
   // Broadcasts real-time queue size to all connected clients.
   setInterval(async () => {
-    const status = await MatchmakingService.getQueueStatus();
-    if (status.size > 0) {
-      io.emit('queue_pulse', status); // broadcast to everyone
+    const [codeStatus, mcqStatus] = await Promise.all([
+      MatchmakingService.getQueueStatus('code'),
+      MatchmakingService.getQueueStatus('mcq'),
+    ]);
+    if (codeStatus.size > 0 || mcqStatus.size > 0) {
+      io.emit('queue_pulse', {
+        code: codeStatus,
+        mcq: mcqStatus,
+      });
     }
   }, 5000);
 
-  logger.info('Socket.IO server initialised with auth middleware, game timer, and matchmaking pulse.');
+  logger.info('Socket.IO server initialised with auth middleware, game timer, MCQ timer, and matchmaking pulse.');
   return io;
 }
 

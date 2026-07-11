@@ -44,3 +44,53 @@ export interface ExecutionResult {
   totalCount: number;
   testCases: TestCaseResult[];
 }
+
+// ── MCQ Battle Types ─────────────────────────────────────────────
+
+export interface McqQuestion {
+  id: string;                    // unique identifier for this question
+  question: string;              // HTML-decoded question text
+  options: string[];             // 4 shuffled answer choices
+  correctIndex: number;          // index of the correct answer in options[]
+  difficulty: 'easy' | 'medium' | 'hard';
+  category: string;
+}
+
+export interface McqPlayerState {
+  userId: string;
+  username: string;
+  score: number;                 // correct answers count
+  currentAnswer: number | null;  // index they chose (null = no answer yet)
+  answered: boolean;             // have they submitted an answer this round?
+  streak: number;                // consecutive correct answers
+}
+
+export interface McqRoundResult {
+  round: number;
+  questionText: string;
+  correctIndex: number;
+  player1Answer: number | null;
+  player2Answer: number | null;
+}
+
+export interface McqRoomState {
+  matchId: string;
+  roomId: string;
+  status: 'ACTIVE' | 'REVEAL' | 'COMPLETED';
+  currentRound: number;          // 1-based
+  totalRounds: number;           // 10
+  roundTimeRemaining: number;    // seconds
+  roundEndTime: number;          // ms timestamp
+  playerIds: string[];
+  players: Record<string, McqPlayerState>;
+  currentQuestion: {
+    id: string;
+    question: string;
+    options: string[];           // sent WITHOUT correctIndex
+    difficulty: string;
+    category: string;
+  } | null;
+  questions: McqQuestion[];      // full question bank (server-only, never sent to client)
+  roundResults: McqRoundResult[];
+}
+

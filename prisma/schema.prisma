@@ -14,13 +14,19 @@ model User {
   passwordHash String
   role         String        @default("USER") // USER or ADMIN
   eloRating    Int           @default(1000)
+  mcqEloRating Int           @default(1000)
   createdAt    DateTime      @default(now())
   
-  // Relations
-  matchesAsWinner Match[]    @relation("WinnerRelation")
-  matchesAsPlayer1 Match[]   @relation("Player1Relation")
-  matchesAsPlayer2 Match[]   @relation("Player2Relation")
+  // Relations — Code Battle
+  matchesAsWinner  Match[]    @relation("WinnerRelation")
+  matchesAsPlayer1 Match[]    @relation("Player1Relation")
+  matchesAsPlayer2 Match[]    @relation("Player2Relation")
   submissions      Submission[]
+
+  // Relations — MCQ Battle
+  mcqMatchesAsPlayer1 McqMatch[] @relation("McqPlayer1Relation")
+  mcqMatchesAsPlayer2 McqMatch[] @relation("McqPlayer2Relation")
+  mcqMatchesAsWinner  McqMatch[] @relation("McqWinnerRelation")
 }
 
 model Problem {
@@ -90,4 +96,26 @@ model Submission {
   @@index([userId])
   @@index([problemId])
   @@index([matchId])
+}
+
+model McqMatch {
+  id           String   @id @default(uuid())
+  player1Id    String
+  player2Id    String
+  winnerId     String?
+  startedAt    DateTime @default(now())
+  endedAt      DateTime?
+  status       String   // ACTIVE, COMPLETED, ABANDONED
+  player1Score Int      @default(0)
+  player2Score Int      @default(0)
+  totalRounds  Int      @default(10)
+
+  // Relations
+  player1 User  @relation("McqPlayer1Relation", fields: [player1Id], references: [id])
+  player2 User  @relation("McqPlayer2Relation", fields: [player2Id], references: [id])
+  winner  User? @relation("McqWinnerRelation", fields: [winnerId], references: [id])
+
+  @@index([player1Id])
+  @@index([player2Id])
+  @@index([winnerId])
 }

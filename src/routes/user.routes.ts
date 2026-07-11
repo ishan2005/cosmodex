@@ -20,6 +20,7 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
       username: true,
       email: true,
       eloRating: true,
+      mcqEloRating: true,
       role: true,
       createdAt: true,
     },
@@ -65,6 +66,7 @@ router.get('/', async (req, res) => {
       id: true,
       username: true,
       eloRating: true,
+      mcqEloRating: true,
       createdAt: true,
     },
     orderBy: { eloRating: 'desc' },
@@ -86,6 +88,7 @@ router.get('/:userId', async (req, res) => {
       username: true,
       email: true,
       eloRating: true,
+      mcqEloRating: true,
       createdAt: true,
     },
   });

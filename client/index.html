@@ -51,6 +51,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
   background:linear-gradient(135deg,#60a5fa,#a855f7);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .tagline{color:var(--muted);font-size:14px;margin-top:6px;letter-spacing:1px}
+.tagline-sub{color:var(--dim);font-size:12px;margin-top:2px;letter-spacing:.5px}
 
 /* ── AUTH FORM ── */
 #auth-box{display:flex;flex-direction:column;align-items:center;gap:16px;width:100%}
@@ -76,6 +77,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .lobby-card .avi{font-size:48px;margin-bottom:10px}
 .lobby-card .pname{font-size:18px;font-weight:700}
 .lobby-card .pelo{font-size:12px;color:var(--muted);margin-top:4px}
+.lobby-elo-row{display:flex;gap:16px;margin-top:6px;justify-content:center}
+.lobby-elo-item{font-size:11px;color:var(--dim);padding:3px 10px;border-radius:6px;background:rgba(255,255,255,.04);border:1px solid var(--border)}
 .logout-btn{
   background:transparent;border:1px solid var(--border);color:var(--muted);
   padding:8px 20px;border-radius:8px;font-size:13px;cursor:pointer;
@@ -91,6 +94,31 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 }
 .find-btn:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(59,130,246,.4)}
 .find-btn:disabled{background:#1f2937;color:var(--muted);cursor:not-allowed;transform:none;box-shadow:none}
+
+/* ── MODE SELECTION ── */
+.mode-label{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;font-weight:700}
+.mode-cards{display:flex;gap:20px;flex-wrap:wrap;justify-content:center}
+.mode-card{
+  width:220px;padding:28px 24px;border-radius:16px;text-align:center;
+  cursor:pointer;transition:all .25s ease;position:relative;overflow:hidden;
+  border:2px solid var(--border);background:var(--surface);
+}
+.mode-card::before{
+  content:'';position:absolute;inset:0;border-radius:14px;opacity:0;
+  transition:opacity .3s ease;z-index:0;
+}
+.mode-card:hover{transform:translateY(-4px);border-color:transparent}
+.mode-card:hover::before{opacity:1}
+.mode-card.code-card:hover{border-color:#3b82f6;box-shadow:0 8px 32px rgba(59,130,246,.25)}
+.mode-card.code-card:hover::before{background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(168,85,247,.06))}
+.mode-card.mcq-card:hover{border-color:#22c55e;box-shadow:0 8px 32px rgba(34,197,94,.25)}
+.mode-card.mcq-card:hover::before{background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(245,158,11,.06))}
+.mode-card .mc-icon{font-size:44px;margin-bottom:12px;position:relative;z-index:1}
+.mode-card .mc-title{font-size:16px;font-weight:800;letter-spacing:1px;position:relative;z-index:1}
+.mode-card .mc-desc{font-size:11px;color:var(--dim);margin-top:8px;line-height:1.5;position:relative;z-index:1}
+.mode-card .mc-elo{font-size:10px;color:var(--muted);margin-top:10px;padding:4px 12px;border-radius:8px;background:rgba(255,255,255,.04);display:inline-block;position:relative;z-index:1}
+.mode-card.code-card .mc-title{color:#60a5fa}
+.mode-card.mcq-card .mc-title{color:#4ade80}
 
 /* ── QUEUE ── */
 #queue-screen{
@@ -267,6 +295,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
   text-transform:uppercase;
   letter-spacing:.5px;
   cursor:pointer;
+  -webkit-user-select:none;
   user-select:none;
 }
 .custom-input-bar:hover{
@@ -401,7 +430,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 <div id="landing" class="screen on">
   <div class="logo-wrap">
     <div class="logo">⚔ COSMODEX</div>
-    <div class="tagline">Real-time 1v1 Coding Battles</div>
+    <div class="tagline">Real-time 1v1 Battles</div>
+    <div class="tagline-sub" id="landing-sub"></div>
   </div>
 
   <!-- AUTH BOX: shown when logged out -->
@@ -423,14 +453,31 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
     </div>
   </div>
 
-  <!-- LOBBY BOX: shown when logged in -->
-  <div id="lobby-box" style="display:none;flex-direction:column;align-items:center;gap:20px">
+  <!-- LOBBY BOX: shown when logged in (mode selection) -->
+  <div id="lobby-box" style="display:none;flex-direction:column;align-items:center;gap:24px">
     <div class="lobby-card">
       <div class="avi" id="lobby-avi">🧑‍💻</div>
       <div class="pname" id="lobby-name">—</div>
-      <div class="pelo" id="lobby-elo">ELO —</div>
+      <div class="lobby-elo-row">
+        <span class="lobby-elo-item" id="lobby-elo-code">⚔ Code ELO —</span>
+        <span class="lobby-elo-item" id="lobby-elo-mcq">🧠 MCQ ELO —</span>
+      </div>
     </div>
-    <button class="find-btn" id="find-btn" onclick="findMatch()">⚔ Find Match</button>
+    <div class="mode-label">Choose your arena</div>
+    <div class="mode-cards">
+      <div class="mode-card code-card" id="mode-code" onclick="findMatch('code')">
+        <div class="mc-icon">💻</div>
+        <div class="mc-title">CODE BATTLE</div>
+        <div class="mc-desc">Solve coding problems in real-time.<br>6 stages · 3 min each · Boss Battle finale</div>
+        <div class="mc-elo" id="mc-elo-code">ELO —</div>
+      </div>
+      <div class="mode-card mcq-card" id="mode-mcq" onclick="findMatch('mcq')">
+        <div class="mc-icon">🧠</div>
+        <div class="mc-title">MCQ BATTLE</div>
+        <div class="mc-desc">Answer CS trivia in rapid fire.<br>10 rounds · 15 sec each · Speed matters</div>
+        <div class="mc-elo" id="mc-elo-mcq">ELO —</div>
+      </div>
+    </div>
     <button class="logout-btn" onclick="doLogout()">Logout</button>
   </div>
 </div>
@@ -597,17 +644,19 @@ const STARTERS = {
 };
 
 // ── STATE ──────────────────────────────────────
-let myId        = '';
-let myName      = '';
-let myToken     = '';
-let myElo       = 0;
-let socket      = null;
-let roomId      = '';
-let curProblem  = null;
-let allProblems = [];
-let gameState   = null;
-let submitting  = false;
-let decTimer    = null;
+let myId         = '';
+let myName       = '';
+let myToken      = '';
+let myElo        = 0;
+let myMcqElo     = 0;
+let selectedMode = 'code'; // 'code' | 'mcq'
+let socket       = null;
+let roomId       = '';
+let curProblem   = null;
+let allProblems  = [];
+let gameState    = null;
+let submitting   = false;
+let decTimer     = null;
 
 // ── SCREENS ───────────────────────────────────
 function show(id) {
@@ -653,11 +702,16 @@ window.addEventListener('load', async () => {
 
       myToken = savedToken; myId = savedUser.id;
       myName = savedUser.username; myElo = savedUser.eloRating;
+      myMcqElo = savedUser.mcqEloRating || 1000;
       showLobby();
       // Refresh ELO from server silently
       const users = await fetch('/api/users').then(r=>r.json()).catch(()=>[]);
       const me = Array.isArray(users) ? users.find(u=>u.id===myId) : null;
-      if (me) { myElo = me.eloRating; document.getElementById('lobby-elo').textContent = `ELO ${myElo}`; }
+      if (me) {
+        myElo = me.eloRating;
+        myMcqElo = me.mcqEloRating || 1000;
+        updateEloDisplays();
+      }
     }
   } catch(_) {}
   allProblems = await fetch('/api/problems').then(r=>r.json()).catch(()=>[]);
@@ -705,8 +759,20 @@ async function doRegister() {
 function saveSession(res) {
   myToken = res.token; myId = res.user.id;
   myName = res.user.username; myElo = res.user.eloRating;
+  myMcqElo = res.user.mcqEloRating || 1000;
   localStorage.setItem('cosmodex_token', myToken);
   localStorage.setItem('cosmodex_user',  JSON.stringify(res.user));
+}
+
+function updateEloDisplays() {
+  const codeEl = document.getElementById('lobby-elo-code');
+  const mcqEl  = document.getElementById('lobby-elo-mcq');
+  const mcCode = document.getElementById('mc-elo-code');
+  const mcMcq  = document.getElementById('mc-elo-mcq');
+  if (codeEl) codeEl.textContent = `⚔ Code ELO ${myElo}`;
+  if (mcqEl)  mcqEl.textContent  = `🧠 MCQ ELO ${myMcqElo}`;
+  if (mcCode) mcCode.textContent = `ELO ${myElo}`;
+  if (mcMcq)  mcMcq.textContent  = `ELO ${myMcqElo}`;
 }
 
 function showLobby() {
@@ -715,56 +781,63 @@ function showLobby() {
   lb.style.display = 'flex';
   document.getElementById('lobby-avi').textContent  = userAvi(myName);
   document.getElementById('lobby-name').textContent = myName;
-  document.getElementById('lobby-elo').textContent  = `ELO ${myElo}`;
+  updateEloDisplays();
 }
 
 function doLogout() {
   localStorage.removeItem('cosmodex_token'); localStorage.removeItem('cosmodex_user');
-  myToken=''; myId=''; myName=''; myElo=0;
+  myToken=''; myId=''; myName=''; myElo=0; myMcqElo=0;
   document.getElementById('lobby-box').style.display = 'none';
   document.getElementById('auth-box').style.display  = 'flex';
 }
 
 // ── FIND MATCH ────────────────────────────────
-function findMatch() {
+function findMatch(mode) {
   if (!myToken || !myId) { toast('Please log in first','err'); return; }
-  const btn = document.getElementById('find-btn');
-  if (btn.disabled) return; // Double-click guard
-  btn.disabled = true; btn.textContent = 'Connecting…';
+  selectedMode = mode || 'code';
 
   // Show queue screen with real user info
+  const displayElo = selectedMode === 'mcq' ? myMcqElo : myElo;
   document.getElementById('q-avi').textContent  = userAvi(myName);
   document.getElementById('q-name').textContent = myName;
-  document.getElementById('q-elo').textContent  = `ELO ${myElo}`;
+  document.getElementById('q-elo').textContent  = `${selectedMode === 'mcq' ? 'MCQ' : 'Code'} ELO ${displayElo}`;
+  document.getElementById('q-label').textContent = `Searching for a ${selectedMode === 'mcq' ? 'MCQ' : 'Code'} opponent…`;
   show('queue-screen');
 
-  // Connect + join queue
+  // Connect + join queue with mode
   socket = io({ auth: { token: myToken } });
 
   socket.on('connect', () => {
-    socket.emit('join_queue', { userId: myId });
+    socket.emit('join_queue', { userId: myId, mode: selectedMode });
   });
 
   socket.on('queue_joined', d => {
     document.getElementById('q-label').textContent =
-      `Searching… ${d.size > 1 ? d.size + ' players in queue' : 'waiting for opponent'}`;
+      `Searching for ${d.mode === 'mcq' ? 'MCQ' : 'Code'} opponent… ${d.size > 1 ? d.size + ' in queue' : ''}`;
   });
 
   socket.on('queue_pulse', d => {
-    document.getElementById('q-label').textContent = `${d.size} player(s) in queue…`;
+    const modeData = selectedMode === 'mcq' ? d.mcq : d.code;
+    if (modeData && modeData.size > 0) {
+      document.getElementById('q-label').textContent = `${modeData.size} player(s) in ${selectedMode === 'mcq' ? 'MCQ' : 'Code'} queue…`;
+    }
   });
 
   socket.on('match_found', async d => {
     roomId = d.roomId;
+    const matchMode = d.mode || selectedMode;
 
     document.getElementById('vs-me').innerHTML  =
-      `<div class="vavi">${userAvi(myName)}</div><div class="vname">${myName}</div><div class="velo">ELO ${myElo}</div>`;
+      `<div class="vavi">${userAvi(myName)}</div><div class="vname">${myName}</div><div class="velo">ELO ${matchMode === 'mcq' ? myMcqElo : myElo}</div>`;
     document.getElementById('vs-opp').innerHTML =
       `<div class="vavi">${userAvi(d.opponentUsername)}</div><div class="vname">${d.opponentUsername}</div><div class="velo">ELO ${d.opponentElo}</div>`;
 
+    // Update found screen title based on mode
+    document.querySelector('.found-title').textContent = matchMode === 'mcq' ? 'MCQ Battle Found!' : 'Match Found!';
+
     show('found-screen');
 
-    if (allProblems.length === 0)
+    if (matchMode === 'code' && allProblems.length === 0)
       allProblems = await fetch('/api/problems').then(r=>r.json()).catch(()=>[]);
 
     // ── 5-second countdown before entering the arena ──────────────
@@ -774,7 +847,9 @@ function findMatch() {
 
     const updateCountdown = (n) => {
       const deg = Math.round(((TOTAL - n) / TOTAL) * 360);
-      cdEl.style.background = `conic-gradient(var(--blue) ${deg}deg, rgba(59,130,246,.15) ${deg}deg)`;
+      const color = matchMode === 'mcq' ? 'var(--green)' : 'var(--blue)';
+      const colorBg = matchMode === 'mcq' ? 'rgba(34,197,94,.15)' : 'rgba(59,130,246,.15)';
+      cdEl.style.background = `conic-gradient(${color} ${deg}deg, ${colorBg} ${deg}deg)`;
       cdEl.innerHTML = n > 0
         ? `<span>${n}</span>`
         : `<span style="font-size:20px;letter-spacing:1px">GO!</span>`;
@@ -787,10 +862,28 @@ function findMatch() {
       if (count <= 0) {
         clearInterval(cdInterval);
         setTimeout(() => {
-          registerGame();
-          socket.emit('join_room', { roomId, userId: myId });
-          show('game');
-          updateCountdown(5);
+          if (matchMode === 'mcq') {
+            // ── MCQ: redirect to MCQ arena page ──────────────────
+            // Use sessionStorage (per-tab) so two players on the same browser
+            // don't overwrite each other's identity
+            sessionStorage.setItem('cosmodex_mcq_room', JSON.stringify({
+              roomId,
+              myId,
+              myName,
+              myToken,
+              myMcqElo,
+              opponentId: d.opponentId,
+              opponentUsername: d.opponentUsername,
+              opponentElo: d.opponentElo,
+            }));
+            window.location.href = '/mcq-arena.html';
+          } else {
+            // ── Code: enter the existing game arena ──────────────
+            registerGame();
+            socket.emit('join_room', { roomId, userId: myId });
+            show('game');
+            updateCountdown(5);
+          }
         }, 600);
       }
     }, 1000);
@@ -811,8 +904,6 @@ function cancelQueue() {
   socket?.disconnect();
   socket = null;
   show('landing');
-  const btn = document.getElementById('find-btn');
-  if (btn) { btn.disabled = false; btn.textContent = '⚔ Find Match'; }
 }
 
 // ── GAME EVENTS ───────────────────────────────

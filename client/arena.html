@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>COSMODEX — Live Arena</title>
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
@@ -227,7 +228,7 @@ textarea#stdin-input::placeholder{color:#484f58}
     <div class="right-col">
       <div class="editor-header">
         <span style="font-size:12px;color:#8b949e">Code Editor</span>
-        <select id="lang-select">
+        <select id="lang-select" aria-label="Select programming language">
           <option value="python">Python 3</option>
           <option value="javascript">JavaScript</option>
           <option value="cpp">C++</option>
@@ -312,17 +313,17 @@ require(['vs/editor/editor.main'], function () {
   monaco.languages.setLanguageConfiguration('python', {
     onEnterRules: [
       {
-        // After a line ending with ':' (with optional comment/whitespace)
-        beforeText: /:\s*(#.*)?$/,
+        // After a line ending with ':' (with optional comment/whitespace) → indent
+        beforeText: /^.*:\s*(#.*)?$/,
         action: { indentAction: monaco.languages.IndentAction.Indent }
       },
       {
-        // After opening bracket/paren with nothing after
-        beforeText: /[\(\[\{]\s*$/,
+        // After opening bracket/paren/brace with nothing meaningful after → indent
+        beforeText: /^.*[\(\[\{]\s*$/,
         action: { indentAction: monaco.languages.IndentAction.Indent }
       },
       {
-        // 'return', 'pass', 'break', 'continue', 'raise' → outdent next line
+        // After 'return', 'pass', 'break', 'continue', 'raise' → outdent next line
         beforeText: /^\s+(return|pass|break|continue|raise)\b.*$/,
         action: { indentAction: monaco.languages.IndentAction.Outdent }
       }
@@ -334,13 +335,22 @@ require(['vs/editor/editor.main'], function () {
       { open: '{', close: '}' },
       { open: '"', close: '"', notIn: ['string'] },
       { open: "'", close: "'", notIn: ['string'] },
-      { open: '"""', close: '"""' },
-      { open: "'''", close: "'''" },
     ],
+    surroundingPairs: [
+      { open: '(', close: ')' },
+      { open: '[', close: ']' },
+      { open: '{', close: '}' },
+      { open: '"', close: '"' },
+      { open: "'", close: "'" },
+    ],
+    folding: {
+      offSide: true,
+    },
     indentationRules: {
-      increaseIndentPattern: /:\s*(#.*)?$|[\(\[\{]\s*$/,
-      decreaseIndentPattern: /^\s*(return|pass|break|continue|raise|else:|elif\s|except|finally:)/,
-    }
+      increaseIndentPattern: /^.*:\s*(#.*)?$/,
+      decreaseIndentPattern: /^\s*(else\s*:|elif\s.*:|except(\s.*)?:|finally\s*:)\s*$/,
+    },
+    wordPattern: /(-?\d*\.\d\w*)|([^\`\~\!\@\#\%\^\&\*\(\)\-\=\+\[\{\]\}\\\|\;\:\'\"\,\.\<\>\/\?\s]+)/g,
   });
 
   // JavaScript: auto-indent after { and outdent after }

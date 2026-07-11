@@ -60,7 +60,7 @@ router.post('/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await prisma.user.create({
       data: { username, email, passwordHash },
-      select: { id: true, username: true, email: true, eloRating: true, role: true, createdAt: true },
+      select: { id: true, username: true, email: true, eloRating: true, mcqEloRating: true, role: true, createdAt: true },
     });
 
     const token = signToken({ userId: user.id, username: user.username, role: user.role });
@@ -108,6 +108,7 @@ router.post('/login', async (req, res) => {
         username: user.username,
         email: user.email,
         eloRating: user.eloRating,
+        mcqEloRating: user.mcqEloRating,
         role: user.role,
       },
       token,

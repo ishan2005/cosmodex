@@ -45,6 +45,43 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * GET /api/matches/mcq/list
+ * List recent MCQ matches (global MCQ match feed).
+ * Public endpoint. Query: ?page=1&limit=10
+ */
+router.get('/mcq/list', async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 10));
+  const skip = (page - 1) * limit;
+
+  const [matches, total] = await Promise.all([
+    prisma.mcqMatch.findMany({
+      where: { status: 'COMPLETED' },
+      include: {
+        player1: { select: { id: true, username: true, mcqEloRating: true } },
+        player2: { select: { id: true, username: true, mcqEloRating: true } },
+        winner: { select: { id: true, username: true } },
+      },
+      orderBy: { startedAt: 'desc' },
+      skip,
+      take: limit,
+    }),
+    prisma.mcqMatch.count({ where: { status: 'COMPLETED' } }),
+  ]);
+
+  res.json({
+    matches,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      hasNext: page * limit < total,
+    },
+  });
+});
+
+/**
  * GET /api/matches/:matchId
  * Fetch a single match by ID with full details.
  * Public endpoint — useful for match detail/replay screens.
