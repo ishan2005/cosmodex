@@ -76,6 +76,33 @@ export function registerMcqHandlers(io: Server, socket: Socket) {
       socket.emit('error', { message: msg });
     }
   });
+
+  // ── 3. LEAVE MCQ BATTLE (forfeit) ─────────────────────────────
+  socket.on('mcq_leave_room', async (payload: { roomId: string; userId: string }) => {
+    const { roomId, userId } = payload;
+    if (!roomId || !userId) return;
+
+    const state = await McqService.getMcqRoomState(roomId);
+    if (!state || state.status === 'COMPLETED') return;
+
+    // Determine the opponent as winner
+    const opponentId = state.playerIds.find(id => id !== userId) ?? null;
+
+    logger.info(`[MCQ Handler] Player ${userId} forfeited MCQ battle ${roomId}. Winner: ${opponentId}`);
+
+    // End match with opponent as winner
+    await McqService.endMcqMatch(roomId, opponentId);
+
+    // Notify all players in the room
+    io.to(roomId).emit('mcq_match_ended', {
+      winnerId: opponentId,
+      reason: 'opponent_forfeit',
+      forfeitedBy: userId,
+      finalScores: Object.fromEntries(
+        state.playerIds.map(id => [id, state.players[id]?.score ?? 0])
+      ),
+    });
+  });
 }
 
 /**

@@ -110,6 +110,8 @@ body{font-family:'Segoe UI',monospace,sans-serif;background:#0d1117;color:#c9d1d
 .user-chip .uc-elo{font-size:11px;color:#d29922;font-weight:600}
 .btn-logout{background:none;border:1px solid #30363d;color:#484f58;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:monospace;transition:all .15s;margin-left:4px}
 .btn-logout:hover{border-color:#f85149;color:#f85149}
+.btn-forfeit{background:none;border:1px solid #30363d;color:#f85149;padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:monospace;transition:all .15s;font-weight:700}
+.btn-forfeit:hover{border-color:#f85149;background:#3d0a0a}
 /* ── ADMIN BUTTON ── */
 .btn-admin{display:none;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;border:none;padding:8px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:monospace;transition:all .2s;margin-top:8px;gap:6px;align-items:center}
 .btn-admin:hover{transform:translateY(-2px);box-shadow:0 4px 20px rgba(99,102,241,.4)}
@@ -210,6 +212,7 @@ textarea#stdin-input::placeholder{color:#484f58}
       <span class="uc-name" id="uc-name">-</span>
       <span class="uc-elo" id="uc-elo">ELO -</span>
     </div>
+    <button class="btn-forfeit" id="forfeit-btn" onclick="forfeitMatch()">🏳️ Forfeit</button>
     <button class="btn-logout" onclick="logout()">🚪</button>
   </div>
 
@@ -501,6 +504,14 @@ if (_storedUser?.role === 'ADMIN') {
   document.getElementById('admin-btn').classList.add('show');
 }
 
+function forfeitMatch() {
+  if (!confirm('Are you sure you want to forfeit? Your opponent will win and your ELO will decrease.')) return;
+  if (socket && currentRoomId && myUserId) {
+    socket.emit('leave_match', { roomId: currentRoomId, userId: myUserId });
+  }
+  setTimeout(() => { window.location.href = '/'; }, 1500);
+}
+
 function logout() {
   localStorage.removeItem('cosmodex_token');
   localStorage.removeItem('cosmodex_user');
@@ -720,6 +731,11 @@ function registerGameListeners() {
 
   socket.on('match_ended', (d) => {
     clearDecisionUI();
+    if (d.reason === 'opponent_forfeit' && d.forfeitedBy !== myUserId) {
+      toast('🏳️ Opponent forfeited! You win!', 'ok');
+    } else if (d.reason === 'opponent_disconnect' && d.forfeitedBy !== myUserId) {
+      toast('📡 Opponent disconnected! You win!', 'ok');
+    }
     showResult(d);
   });
 

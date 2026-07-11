@@ -451,11 +451,59 @@ export function registerMatchHandlers(io: Server, socket: Socket) {
   );
 
 
-  // ── 7. DISCONNECT ─────────────────────────────────────────────
-  socket.on('disconnect', (reason) => {
+  // ── 7. LEAVE MATCH (forfeit) ───────────────────────────────────
+  socket.on('leave_match', async (payload: { roomId: string; userId: string }) => {
+    const { roomId, userId } = payload;
+    if (!roomId || !userId) return;
+
+    const state = await RedisService.getRoomState(roomId);
+    if (!state || state.status === 'COMPLETED') return;
+
+    // Determine the opponent as winner
+    const opponentId = state.playerIds.find(id => id !== userId) ?? null;
+
+    logger.info(`[Handler] Player ${userId} forfeited match ${roomId}. Winner: ${opponentId}`);
+
+    // End match with opponent as winner
+    await MatchService.endMatch(roomId, opponentId);
+    io.to(roomId).emit('match_ended', { winnerId: opponentId, reason: 'opponent_forfeit', forfeitedBy: userId });
+  });
+
+
+  // ── 8. DISCONNECT ─────────────────────────────────────────────
+  socket.on('disconnect', async (reason) => {
+    const userId = socket.data?.userId;
     logger.info(`[Handler] Socket ${socket.id} disconnected: ${reason}`);
-    // TTL on Redis keys handles cleanup for abandoned rooms
-    // No action needed here beyond logging
+
+    if (!userId) return;
+
+    // Check if this user was in an active room — if so, forfeit
+    const activeRoom = await RedisService.findActiveRoomForUser(userId);
+    if (activeRoom) {
+      const state = await RedisService.getRoomState(activeRoom);
+      if (state && state.status !== 'COMPLETED') {
+        // Check if opponent is still connected
+        const opponentId = state.playerIds.find(id => id !== userId) ?? null;
+        if (opponentId) {
+          // Wait 10 seconds to allow reconnection before forfeiting
+          setTimeout(async () => {
+            const currentState = await RedisService.getRoomState(activeRoom);
+            if (currentState && currentState.status !== 'COMPLETED') {
+              // Check if the user reconnected
+              const room = io.sockets.adapter.rooms.get(activeRoom);
+              const userSocketIds = await io.in(activeRoom).fetchSockets();
+              const userReconnected = userSocketIds.some(s => s.data?.userId === userId);
+
+              if (!userReconnected) {
+                logger.info(`[Handler] Player ${userId} did not reconnect in 10s — auto-forfeit`);
+                await MatchService.endMatch(activeRoom, opponentId);
+                io.to(activeRoom).emit('match_ended', { winnerId: opponentId, reason: 'opponent_disconnect', forfeitedBy: userId });
+              }
+            }
+          }, 10_000);
+        }
+      }
+    }
   });
 }
 

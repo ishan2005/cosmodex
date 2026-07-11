@@ -71,6 +71,12 @@ body{
 .timer-circle.warn span{color:var(--yellow)}
 .timer-circle.danger span{color:var(--red);animation:flash .5s infinite}
 @keyframes flash{0%,100%{opacity:1}50%{opacity:.4}}
+.btn-forfeit-mcq{
+  background:none;border:1px solid var(--border);color:var(--red);padding:6px 14px;
+  border-radius:8px;font-size:11px;cursor:pointer;font-family:'Inter',sans-serif;
+  font-weight:700;transition:all .15s;letter-spacing:.5px;
+}
+.btn-forfeit-mcq:hover{border-color:var(--red);background:#3d0a0a}
 
 /* ── MAIN CONTENT ── */
 .mcq-main{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:20px 24px;gap:18px}
@@ -217,6 +223,7 @@ body{
   <span class="round-pill" id="round-pill">Round 1 / 10</span>
   <span class="topbar-spacer"></span>
   <div class="timer-circle" id="timer-circle"><span id="timer-val">15</span></div>
+  <button class="btn-forfeit-mcq" onclick="forfeitMcqBattle()">🏳️ Forfeit</button>
 </div>
 
 <!-- ── MAIN ARENA ── -->
@@ -532,6 +539,16 @@ function renderRoundHistory(state) {
   container.innerHTML = html;
 }
 
+// ── FORFEIT MCQ BATTLE ──────────────────────────
+function forfeitMcqBattle() {
+  if (!confirm('Are you sure you want to forfeit? Your opponent will win.')) return;
+  if (socket && roomId && myId) {
+    socket.emit('mcq_leave_room', { roomId, userId: myId });
+  }
+  toast('🏳️ You forfeited the battle', 'err');
+  setTimeout(() => { window.location.href = '/'; }, 1500);
+}
+
 // ── SUBMIT ANSWER ───────────────────────────────
 function submitAnswer(index) {
   if (myAnswer !== null || isRevealing) return; // Already answered or revealing
@@ -592,7 +609,13 @@ function showResult(data) {
   const oppScore = Object.entries(data.finalScores || {}).find(([k]) => k !== myId)?.[1] ?? 0;
 
   let icon, title, cls, sub;
-  if (!data.winnerId) {
+  if (data.reason === 'opponent_forfeit' && data.forfeitedBy !== myId) {
+    icon = '🏆'; title = 'VICTORY'; cls = 'win-t';
+    sub = 'Your opponent forfeited! You win by default.';
+  } else if (data.reason === 'opponent_forfeit' && data.forfeitedBy === myId) {
+    icon = '🏳️'; title = 'FORFEITED'; cls = 'lose-t';
+    sub = 'You forfeited the battle.';
+  } else if (!data.winnerId) {
     icon = '🤝'; title = 'DRAW'; cls = 'draw-t';
     sub = `Both fighters scored ${meScore}. A tie breaker awaits!`;
   } else if (data.winnerId === myId) {
