@@ -245,4 +245,149 @@ router.get('/users', async (req: AuthRequest, res) => {
   res.json(users);
 });
 
+// ──────────────────────────────────────────────────────────────────
+// MCQ QUESTION BANK MANAGEMENT
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/mcq-questions
+ * List all MCQ questions with optional filters.
+ * Query: ?category=Algorithms&difficulty=MEDIUM&search=binary
+ */
+router.get('/mcq-questions', async (req: AuthRequest, res) => {
+  const { category, difficulty, search } = req.query;
+
+  const where: Record<string, any> = {};
+  if (category) where.category = String(category);
+  if (difficulty) where.difficulty = String(difficulty).toUpperCase();
+  if (search) where.question = { contains: String(search), mode: 'insensitive' };
+
+  const questions = await prisma.mcqQuestion.findMany({
+    where,
+    include: { createdBy: { select: { id: true, username: true } } },
+    orderBy: [{ category: 'asc' }, { difficulty: 'asc' }, { createdAt: 'desc' }],
+  });
+
+  res.json(questions);
+});
+
+/**
+ * GET /api/admin/mcq-stats
+ * MCQ question stats by category and difficulty.
+ */
+router.get('/mcq-stats', async (req: AuthRequest, res) => {
+  const [total, byCategory, byDifficulty] = await Promise.all([
+    prisma.mcqQuestion.count(),
+    prisma.mcqQuestion.groupBy({ by: ['category'], _count: { id: true }, orderBy: { category: 'asc' } }),
+    prisma.mcqQuestion.groupBy({ by: ['difficulty'], _count: { id: true }, orderBy: { difficulty: 'asc' } }),
+  ]);
+
+  res.json({
+    total,
+    byCategory: byCategory.map(c => ({ category: c.category, count: c._count.id })),
+    byDifficulty: byDifficulty.map(d => ({ difficulty: d.difficulty, count: d._count.id })),
+  });
+});
+
+/**
+ * POST /api/admin/mcq-questions
+ * Create a single MCQ question.
+ * Body: { question, options: string[4], correctIndex: 0-3, difficulty, category }
+ */
+router.post('/mcq-questions', async (req: AuthRequest, res) => {
+  const { question, options, correctIndex, difficulty, category } = req.body;
+
+  if (!question || !options || correctIndex === undefined || !difficulty || !category) {
+    return res.status(400).json({ error: 'question, options, correctIndex, difficulty, and category are required' });
+  }
+
+  if (!Array.isArray(options) || options.length !== 4) {
+    return res.status(400).json({ error: 'options must be an array of exactly 4 strings' });
+  }
+
+  if (correctIndex < 0 || correctIndex > 3) {
+    return res.status(400).json({ error: 'correctIndex must be 0-3' });
+  }
+
+  const mcqQ = await prisma.mcqQuestion.create({
+    data: {
+      question,
+      options,
+      correctIndex: Number(correctIndex),
+      difficulty: difficulty.toUpperCase(),
+      category,
+      createdById: req.user!.id,
+    },
+  });
+
+  logger.info(`[Admin] MCQ question created: "${mcqQ.question.substring(0, 50)}…" by ${req.user!.username}`);
+  res.status(201).json(mcqQ);
+});
+
+/**
+ * POST /api/admin/mcq-questions/bulk
+ * Bulk import MCQ questions.
+ * Body: { questions: [{ question, options, correctIndex, difficulty, category }] }
+ */
+router.post('/mcq-questions/bulk', async (req: AuthRequest, res) => {
+  const { questions } = req.body;
+
+  if (!Array.isArray(questions) || questions.length === 0) {
+    return res.status(400).json({ error: 'questions must be a non-empty array' });
+  }
+
+  const data = questions.map((q: any) => ({
+    question: q.question,
+    options: q.options,
+    correctIndex: Number(q.correctIndex),
+    difficulty: (q.difficulty || 'EASY').toUpperCase(),
+    category: q.category || 'General',
+    createdById: req.user!.id,
+  }));
+
+  const result = await prisma.mcqQuestion.createMany({ data });
+
+  logger.info(`[Admin] ${result.count} MCQ questions bulk-imported by ${req.user!.username}`);
+  res.status(201).json({ imported: result.count });
+});
+
+/**
+ * PUT /api/admin/mcq-questions/:id
+ * Update an MCQ question.
+ */
+router.put('/mcq-questions/:id', async (req: AuthRequest, res) => {
+  const id = req.params['id'] as string;
+  const { question, options, correctIndex, difficulty, category } = req.body;
+
+  const existing = await prisma.mcqQuestion.findUnique({ where: { id } });
+  if (!existing) return res.status(404).json({ error: 'MCQ question not found' });
+
+  const updateData: Record<string, any> = {};
+  if (question !== undefined) updateData.question = question;
+  if (options !== undefined) updateData.options = options;
+  if (correctIndex !== undefined) updateData.correctIndex = Number(correctIndex);
+  if (difficulty !== undefined) updateData.difficulty = difficulty.toUpperCase();
+  if (category !== undefined) updateData.category = category;
+
+  const updated = await prisma.mcqQuestion.update({ where: { id }, data: updateData });
+
+  logger.info(`[Admin] MCQ question updated: ${id} by ${req.user!.username}`);
+  res.json(updated);
+});
+
+/**
+ * DELETE /api/admin/mcq-questions/:id
+ * Delete an MCQ question.
+ */
+router.delete('/mcq-questions/:id', async (req: AuthRequest, res) => {
+  const id = req.params['id'] as string;
+  const existing = await prisma.mcqQuestion.findUnique({ where: { id } });
+  if (!existing) return res.status(404).json({ error: 'MCQ question not found' });
+
+  await prisma.mcqQuestion.delete({ where: { id } });
+
+  logger.info(`[Admin] MCQ question deleted: ${id} by ${req.user!.username}`);
+  res.json({ message: 'MCQ question deleted' });
+});
+
 export default router;

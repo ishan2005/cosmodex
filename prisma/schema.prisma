@@ -27,6 +27,13 @@ model User {
   mcqMatchesAsPlayer1 McqMatch[] @relation("McqPlayer1Relation")
   mcqMatchesAsPlayer2 McqMatch[] @relation("McqPlayer2Relation")
   mcqMatchesAsWinner  McqMatch[] @relation("McqWinnerRelation")
+
+  // Relations — Admin MCQ Questions
+  mcqQuestionsCreated McqQuestion[]
+
+  // Relations — Rooms
+  roomsCreated     Room[]             @relation("RoomCreator")
+  roomParticipants RoomParticipant[]
 }
 
 model Problem {
@@ -119,3 +126,65 @@ model McqMatch {
   @@index([player2Id])
   @@index([winnerId])
 }
+
+// ── Admin-managed MCQ Question Bank ──────────────────────────────
+model McqQuestion {
+  id           String   @id @default(uuid())
+  question     String
+  options      String[] // Array of 4 options
+  correctIndex Int      // 0-3 index of correct option
+  difficulty   String   // EASY, MEDIUM, HARD
+  category     String   // "Data Structures", "Algorithms", "OOP", "Web Dev", etc.
+  createdAt    DateTime @default(now())
+  createdById  String?
+
+  createdBy    User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([category])
+  @@index([difficulty])
+}
+
+// ── Private Competition Rooms ────────────────────────────────────
+model Room {
+  id           String            @id @default(uuid())
+  code         String            @unique  // e.g., "COSMO-A1B2"
+  name         String                     // "Class 12 CS Competition"
+  description  String?
+  mode         String                     // "code" or "mcq"
+  status       String            @default("WAITING") // WAITING, ACTIVE, COMPLETED
+  maxPlayers   Int               @default(100)
+  totalRounds  Int               @default(5)
+  currentRound Int               @default(0)
+  createdById  String
+  createdAt    DateTime          @default(now())
+  startedAt    DateTime?
+  endedAt      DateTime?
+
+  // Relations
+  createdBy    User              @relation("RoomCreator", fields: [createdById], references: [id])
+  participants RoomParticipant[]
+
+  @@index([code])
+  @@index([status])
+}
+
+model RoomParticipant {
+  id        String   @id @default(uuid())
+  roomId    String
+  userId    String
+  score     Int      @default(0)
+  wins      Int      @default(0)
+  losses    Int      @default(0)
+  rank      Int?
+  isActive  Boolean  @default(true) // false = eliminated or left
+  joinedAt  DateTime @default(now())
+
+  // Relations
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@index([userId])
+}
+
