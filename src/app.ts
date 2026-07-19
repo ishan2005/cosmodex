@@ -17,6 +17,7 @@ import userRoutes from './routes/user.routes.js';
 import problemRoutes from './routes/problem.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import matchRoutes from './routes/match.routes.js';
+import roomRoutes from './routes/room.routes.js';
 
 // ── APP SETUP ────────────────────────────────────────────────────
 const app = express();
@@ -102,6 +103,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/problems', problemRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/matches', matchRoutes);
+app.use('/api/rooms', roomRoutes);
 
 // ── ROOM ENDPOINTS ───────────────────────────────────────────────
 

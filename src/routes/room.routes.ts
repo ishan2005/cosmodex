@@ -53,11 +53,11 @@ router.post('/', async (req: AuthRequest, res) => {
       mode,
       maxPlayers: Math.min(Number(maxPlayers) || 100, 500),
       totalRounds: Number(totalRounds) || 5,
-      createdById: req.user!.id,
+      createdById: req.user!.userId,
       // Auto-add creator as participant
       participants: {
         create: {
-          userId: req.user!.id,
+          userId: req.user!.userId,
         },
       },
     },
@@ -120,7 +120,7 @@ router.post('/:code/join', async (req: AuthRequest, res) => {
   if (room.participants.length >= room.maxPlayers) return res.status(400).json({ error: 'Room is full' });
 
   // Check if already joined
-  const existing = room.participants.find(p => p.userId === req.user!.id);
+  const existing = room.participants.find(p => p.userId === req.user!.userId);
   if (existing) {
     return res.json({ message: 'Already joined', roomId: room.id });
   }
@@ -128,7 +128,7 @@ router.post('/:code/join', async (req: AuthRequest, res) => {
   await prisma.roomParticipant.create({
     data: {
       roomId: room.id,
-      userId: req.user!.id,
+      userId: req.user!.userId,
     },
   });
 
@@ -165,7 +165,7 @@ router.post('/:code/start', async (req: AuthRequest, res) => {
   });
 
   if (!room) return res.status(404).json({ error: 'Room not found' });
-  if (room.createdById !== req.user!.id) return res.status(403).json({ error: 'Only the room creator can start' });
+  if (room.createdById !== req.user!.userId) return res.status(403).json({ error: 'Only the room creator can start' });
   if (room.status !== 'WAITING') return res.status(400).json({ error: 'Room has already started or completed' });
   if (room.participants.length < 2) return res.status(400).json({ error: 'Need at least 2 participants to start' });
 
@@ -235,7 +235,7 @@ router.get('/:code/leaderboard', async (req: AuthRequest, res) => {
  * List rooms the user has created or joined.
  */
 router.get('/my/list', async (req: AuthRequest, res) => {
-  const userId = req.user!.id;
+  const userId = req.user!.userId;
 
   const rooms = await prisma.room.findMany({
     where: {
@@ -268,7 +268,7 @@ router.post('/:code/end', async (req: AuthRequest, res) => {
 
   const room = await prisma.room.findUnique({ where: { code } });
   if (!room) return res.status(404).json({ error: 'Room not found' });
-  if (room.createdById !== req.user!.id) return res.status(403).json({ error: 'Only the room creator can end' });
+  if (room.createdById !== req.user!.userId) return res.status(403).json({ error: 'Only the room creator can end' });
 
   const updatedRoom = await prisma.room.update({
     where: { code },

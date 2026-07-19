@@ -316,7 +316,7 @@ router.post('/mcq-questions', async (req: AuthRequest, res) => {
       correctIndex: Number(correctIndex),
       difficulty: difficulty.toUpperCase(),
       category,
-      createdById: req.user!.id,
+      createdById: req.user!.userId,
     },
   });
 
@@ -342,7 +342,7 @@ router.post('/mcq-questions/bulk', async (req: AuthRequest, res) => {
     correctIndex: Number(q.correctIndex),
     difficulty: (q.difficulty || 'EASY').toUpperCase(),
     category: q.category || 'General',
-    createdById: req.user!.id,
+    createdById: req.user!.userId,
   }));
 
   const result = await prisma.mcqQuestion.createMany({ data });

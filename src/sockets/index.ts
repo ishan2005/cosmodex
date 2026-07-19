@@ -3,6 +3,7 @@ import { Server, Socket } from 'socket.io';
 import { registerMatchHandlers } from './match.handler.js';
 import { registerMatchmakingHandlers } from './matchmaking.handler.js';
 import { registerMcqHandlers, triggerReveal, triggerNextRound } from './mcq.handler.js';
+import { registerRoomHandlers } from './room.handler.js';
 import { RedisService } from '../services/redis.service.js';
 import { MatchService } from '../services/match.service.js';
 import { McqService } from '../services/mcq.service.js';
@@ -60,6 +61,7 @@ export function initSocketIO(server: HTTPServer): Server {
     registerMatchHandlers(io, socket);
     registerMatchmakingHandlers(io, socket);
     registerMcqHandlers(io, socket);
+    registerRoomHandlers(io, socket);
 
     socket.on('disconnect', (reason) => {
       logger.info(`WebSocket disconnected: ${ident} — reason: ${reason}`);
