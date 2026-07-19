@@ -1,4 +1,4 @@
-# COSMODEX Battle Arena — API Documentation
+# COSMODEX Battle Arena — API Documentation.
 
 > **Base URL (local):** `http://localhost:3000`
 > **Base URL (deployed):** `https://cosmodex-battle-server.onrender.com`
